@@ -1,0 +1,78 @@
+
+title: Account API
+version: v1
+
+types:
+  Account:
+    type: object
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      email:
+        type: string
+      password:
+        type: string
+      role:
+        type: string
+    example:
+      id: "1"
+      name: "John Doe"
+      email: ""
+      password: ""
+      role: "admin"
+      
+/accounts:
+  get:
+    description: Get all accounts
+    responses:
+      200:
+        body:
+          application/json:
+            type: Account[]
+            example:
+
+/accounts/{id}:
+  get:
+    description: Get account by id
+    responses:
+      200:
+        body:
+          application/json:
+            type: Account
+            example:
+
+/bulk/job:
+  get:
+    description: Get All Jobs
+    responses:
+      200:
+
+/bulk/job/{job-id}:
+  get:
+    description: Get Job
+    responses:
+      200:
+  
+  delete:
+    description: Delete Job
+    responses:
+      200:
+        
+        
+
+/bulk/job/accounts:
+  post:
+    description: Create Bulk job
+    responses:
+      201:
+
+  put:
+    description: Upload
+    body:
+      application/csv:
+        type: Account[]
+    responses:
+      201:
+
