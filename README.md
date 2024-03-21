@@ -262,9 +262,9 @@ $ yaac get asset -q account
 ```
 ```
 ORGANIZATION-ID                       GROUP-ID                              GROUP-NAME  ASSET-ID                  TYPE       VERSION  
-fe1db8fb-8261-4b5c-a591-06fea582f980  fe1db8fb-8261-4b5c-a591-06fea582f980  T1          mule-module-account-api   connector  0.0.2    
-fe1db8fb-8261-4b5c-a591-06fea582f980  fe1db8fb-8261-4b5c-a591-06fea582f980  T1          account-api               rest-api   0.0.2    
-fe1db8fb-8261-4b5c-a591-06fea582f980  fe1db8fb-8261-4b5c-a591-06fea582f980  T1          accounts                  rest-api   1.0.0    
+fe1db8fb-xxxx-4b5c-a591-06fea582f980  fe1db8fb-xxxx-4b5c-a591-06fea582f980  T1          mule-module-account-api   connector  0.0.2    
+fe1db8fb-xxxx-4b5c-a591-06fea582f980  fe1db8fb-xxxx-4b5c-a591-06fea582f980  T1          account-api               rest-api   0.0.2    
+fe1db8fb-xxxx-4b5c-a591-06fea582f980  fe1db8fb-xxxx-4b5c-a591-06fea582f980  T1          accounts                  rest-api   1.0.0    
 ```
 
 Additionaly, qurey with type attribute 'rest-api'
@@ -275,8 +275,8 @@ $ yaac get asset -q account types=rest-api
 
 ```
 ORGANIZATION-ID                       GROUP-ID                              GROUP-NAME  ASSET-ID                  TYPE      VERSION  
-fe1db8fb-8261-4b5c-a591-06fea582f980  fe1db8fb-8261-4b5c-a591-06fea582f980  T1          account-api               rest-api  0.0.2    
-fe1db8fb-8261-4b5c-a591-06fea582f980  fe1db8fb-8261-4b5c-a591-06fea582f980  T1          accounts                  rest-api  1.0.0    
+fe1db8fb-xxxx-4b5c-a591-06fea582f980  fe1db8fb-xxxx-4b5c-a591-06fea582f980  T1          account-api               rest-api  0.0.2    
+fe1db8fb-xxxx-4b5c-a591-06fea582f980  fe1db8fb-xxxx-4b5c-a591-06fea582f980  T1          accounts                  rest-api  1.0.0    
 ```
 
 
@@ -362,7 +362,7 @@ $ yaac upload asset resources/sample/httpbin.raml -g T1 -a httpbin-test-api -v 2
   {"group-id":"fe1db8fb-xxxx-xxxx-a591-06fea582f980",
    "asset-id":"httpbin-test-api",
    "name":"httpbin-test-api",
-   "organization-id":"fe1db8fb-8261-xxxx-xxxx-06fea582f980",
+   "organization-id":"fe1db8fb-xxxx-xxxx-xxxx-06fea582f980",
    "type":"rest-api",
    "version":"2.0.0"}}]
 ```
@@ -420,7 +420,7 @@ $ yaac get env T1 Production -V
 ```
 ===> GET https://anypoint.mulesoft.com/accounts/api/me
 <=== 200 OK
-===> GET https://anypoint.mulesoft.com/accounts/api/organizations/fe1db8fb-8261-4b5c-a591-06fea582f980/environments
+===> GET https://anypoint.mulesoft.com/accounts/api/organizations/fe1db8fb-xxxx-4b5c-a591-06fea582f980/environments
 <=== 200 OK
 
 NAME        ID                                    TYPE        
@@ -484,7 +484,7 @@ _csrf=VZa0CNHzM9CkkmM1UhSjmnYD; Path=/; HttpOnly; Secure
   "client_type":"control"},
    ...}
 
-===> GET https://anypoint.mulesoft.com/accounts/api/organizations/fe1db8fb-8261-4b5c-a591-06fea582f980/environments
+===> GET https://anypoint.mulesoft.com/accounts/api/organizations/fe1db8fb-xxxx-4b5c-a591-06fea582f980/environments
 Content-Type: application/json
 Authorization: Bearer 03162edd-ba82-4275-a9bc-9688e9adb62b
 
@@ -523,7 +523,7 @@ _csrf=R7C9IDYLC0K_VhfqG6mKgCI3; Path=/; HttpOnly; Secure
 {"data":
  [{"id":"bf2bc9ac-69eb-4f1d-8357-eb03aa158945",
    "name":"Design",
-   "organizationId":"fe1db8fb-8261-4b5c-a591-06fea582f980",
+   "organizationId":"fe1db8fb-xxxx-4b5c-a591-06fea582f980",
    "isProduction":false,
    "type":"design",
    ...}]}
@@ -554,7 +554,7 @@ $ yaac get org -F id,name
 ID                                    NAME      
 376ce256-2049-4401-a983-d3cb09689ee0  MuleSoft  
 99c9409f-38f8-40a0-b5b5-9612966a912f  ALC       
-fe1db8fb-8261-4b5c-a591-06fea582f980  T1        
+fe1db8fb-xxxx-4b5c-a591-06fea582f980  T1        
 ```
 
 If '+' is added to key name, the key-value is added to show.
@@ -565,7 +565,7 @@ $ yaac get org F +org-type
 NAME      ID                                    PARENT-NAME  ORG-TYPE  
 MuleSoft  376ce256-2049-4401-a983-d3cb09689ee0  -            anypoint  
 ALC       99c9409f-38f8-40a0-b5b5-9612966a912f  MuleSoft     anypoint  
-T1        fe1db8fb-8261-4b5c-a591-06fea582f980  MuleSoft     anypoint  
+T1        fe1db8fb-xxxx-4b5c-a591-06fea582f980  MuleSoft     anypoint  
 ```
 
 ### No cache
