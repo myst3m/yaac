@@ -181,30 +181,43 @@
   (let [[conn ps org] (reverse args)
         org-id (org->id (or org *org*))
         ps-id (ps->id org-id ps)
-        {c-id :connection-id c-name :connection-name current-routes :static-routes :as c}
+
+        {{:keys [id name  type]} :extra {:keys [routes]} :status}
         (->> (yc/-get-cloudhub20-connections org-id ps-id)
-             (filter #(or (= conn (:connection-name %)) (= conn (:connection-id %))))
+             (filter #(or (= conn (-> % :extra :id))
+                          (= conn (-> % :extra :name))))
              (first))
+        
         additional-routes (set (filter #(= "+" (subs % 0 1)) static-routes))
         replace-routes (set (filter #(not= "+" (subs % 0 1)) static-routes))
 
         merged-routes (if (seq replace-routes)
                         replace-routes
-                        (reduce #(set (conj %1 (subs %2 1))) current-routes additional-routes))]
+                        (reduce #(set (conj %1 (subs %2 1))) routes additional-routes))]
 
-    (-> (http/patch
-         (format "https://anypoint.mulesoft.com/runtimefabric/api/organizations/%s/privatespaces/%s/connections/%s" org-id ps-id c-id)
-         {:headers (default-headers)
-          :body (edn->json :camel {:id c-id
-                                   :name c-name
-                                   :static-routes merged-routes})})
-        (parse-response)
-        :body
-        ((juxt :vpns))
-        (->> (apply concat))
-        (yc/add-extra-fields :id :connection-id
-                             :name :connection-name
-                             :status (fn [x] (or (:vpn-connection-status x)))
-                             :local-asn :local-asn
-                             :routes (fn [x] (->> x :static-routes (str/join ",")))))
-    ))
+    (condp = (keyword type)
+      :vpn (-> (http/patch
+                (format "https://anypoint.mulesoft.com/runtimefabric/api/organizations/%s/privatespaces/%s/connections/%s" org-id ps-id id)
+                {:headers (default-headers)
+                 :body (edn->json :camel {:id id
+                                          :name name
+                                          :static-routes merged-routes})})
+               (parse-response)
+               :body
+               ((juxt :vpns))
+               (->> (apply concat))
+               (yc/add-extra-fields :id :connection-id
+                                    :name :connection-name
+                                    :type type
+                                    :routes (fn [x] (->> x :static-routes (str/join ",")))))
+      :tgw (-> (http/patch
+                (format "https://anypoint.mulesoft.com/runtimefabric/api/organizations/%s/privatespaces/%s/transitgateways/%s" org-id ps-id id)
+                {:headers (default-headers)
+                 :body (edn->json :camel {:routes merged-routes})})
+               (parse-response)
+               :body
+               (yc/add-extra-fields :id :id
+                                    :name :name
+                                    :type type
+                                    :routes (comp #(str/join "," %) :routes)))
+      (throw (e/not-implemented "This type is not supported" {:type type :id id })))))

@@ -1041,7 +1041,7 @@
         (parse-response)
         :body)))
 
-(defn -get-cloudhub20-connections [org ps]
+(defn -get-cloudhub20-vpns [org ps]
   (let [org-id (org->id (or org *org*))
         ps-id (ps->id org-id ps)]
     (-> (http/get (format "https://anypoint.mulesoft.com/runtimefabric/api/organizations/%s/privatespaces/%s/connections" org-id ps-id)
@@ -1052,9 +1052,30 @@
          (->> (apply concat))
          (add-extra-fields :id :connection-id
                            :name :connection-name
-                           :type #(if (:vpn-id %) :vpn :tgw)
-                           :status #(or (:vpn-connection-status %))
-                           :routes #(or (->> % :static-routes (str/join ",")))))))
+                           :type "vpn"
+                           :status :vpn-connection-status
+                           :routes (comp #(str/join "," %) :static-routes)))))
+
+
+
+(defn -get-cloudhub20-transit-gateways [org ps]
+  (let [org-id (org->id (or org *org*))
+        ps-id (ps->id org-id ps)]
+    (-> (http/get (format "https://anypoint.mulesoft.com/runtimefabric/api/organizations/%s/privatespaces/%s/transitgateways" org-id ps-id)
+                   {:headers (default-headers)})
+         (parse-response)
+         :body
+         (add-extra-fields :id :id ;;(comp :id :resource-share :spec)
+                           :name :name
+                           :type "tgw"
+                           :status (comp :attachment :status)
+                           :routes (comp #(str/join "," %) :routes :status))
+         )))
+
+(defn -get-cloudhub20-connections [org ps]
+  (on-threads *no-multi-thread*
+    (-get-cloudhub20-vpns org ps)
+    (-get-cloudhub20-transit-gateways org ps)))
 
 (defn get-cloudhub20-connections [{:keys [args] [org ps] :args}]
   (let [[ps org] (reverse args)]
@@ -1062,12 +1083,10 @@
 
 (defn conn->id [org ps conn]
   (let [xs (->> (-get-cloudhub20-connections org ps)
-                (mapcat (juxt :vpns))
-                (apply concat)
                 (filter #(or (= (:name %) conn) (= (:id %) conn))))]
 
     (cond
-      (= 1 (count xs)) (:connection-id (first xs))
+      (= 1 (count xs)) (or (:connection-id (first xs)) (:id (first xs)))
       (< 1 (count xs)) (throw (e/multiple-connections "Multiple connections found")))))
 
 (defmacro try-wrap [& body]
