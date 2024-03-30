@@ -153,7 +153,7 @@
                          ["rtt|{*args}"]
                          ["runtime-target"]
                          ["runtime-target|{*args}"]]
-                        
+
 
                         ;; Get servers
                         ["|" {:fields [:name :id :mule-version :agent-version :status
@@ -169,7 +169,7 @@
                          ["server|{*args}"]]
                         
                         ;; Get private spaces
-                        ["|" {:fields [:name :id :status :region]
+                        ["|" {:fields [:id :name :status :region]
                               :handler yc/get-cloudhub20-privatespaces}
                          ["ps" ]
                          ["ps|{*args}"]
@@ -226,7 +226,13 @@
                         ["|" {:fields [:username :id :last-name :email :org-type]
                               :handler yc/get-user}
                          ["user"]
-                         ["user|{*args}"]]]
+                         ["user|{*args}"]]
+
+                        ["|" {:handler yc/get-cloudhub20-connections}
+                         ["conn"]
+                         ["conn|{*args}"]
+                         ["connection"]
+                         ["connection|{*args}"]]]
 
                        
                        
@@ -388,7 +394,11 @@
                                                  [:entitlements :v-cores-sandbox :assigned]
                                                  [:entitlements :static-ips :assigned]
                                                  [:entitlements :network-connections :assigned]
-                                                 [:entitlements :vpns :assigned]]}]]
+                                                 [:entitlements :vpns :assigned]]}]
+                        ["|connection" {:help true}]
+                        ["|conn" {:help true}]
+                        ["|connection|{*args}" {:handler upd/update-cloudhub20-connection}]
+                        ["|conn|{*args}" {:handler upd/update-cloudhub20-connection}]]
 
                        
 

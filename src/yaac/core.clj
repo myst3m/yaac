@@ -109,7 +109,7 @@
      (cond (or (> 200 status) (<= 400 status))
            (let [raw (json->edn csk-type body)
                  ex (e/error "Request failed" {:status status
-                                               :message (or (:message raw) raw "general error")
+                                               :message (or (:error (:message raw)) (:message raw) raw "general error")
                                                :raw raw})]
              (throw ex))
            :else {:status status :body (json->edn csk-type body)})))
@@ -834,6 +834,7 @@
   (->> (-get-deployed-applications org env)
        (filter #(or (= (:name %) app) (= (:id %) app)))))
 
+
 (defn get-deployed-applications [{:keys [args no-multi-thread search-term]
                                   [org env] :args :as opts}]
   (log/debug "Opts:" opts)
@@ -1022,8 +1023,52 @@
   (-get-available-node-ports (or org *org*)))
 
 
+(defn ps->id [org ps]
+  (let [xs (->> (-get-cloudhub20-privatespaces org)
+                (filter #(or (= ps (:id %))
+                             (= ps (:name %)))))]
+    (cond
+      (= 1 (count xs)) (:id (first xs))
+      (< 1 (count xs)) (throw (e/multiple-private-sppace-found "Multiple private spaces found" {:name ps} )))))
 
 (def -get-container-application-specs (memoize -get-container-application-specs))
+
+(defn get-transit-gateways [{:keys [args]  [org ps] :args}]
+  (let [org-id (org->id (or org *org*))
+        ps-id (ps->id org-id ps)]
+    (-> (http/get (format "https://anypoint.mulesoft.com/runtimefabric/api/organizations/%s/privatespaces/%s/transitgateways" org-id ps-id)
+                  {:headers (default-headers)})
+        (parse-response)
+        :body)))
+
+(defn -get-cloudhub20-connections [org ps]
+  (let [org-id (org->id (or org *org*))
+        ps-id (ps->id org-id ps)]
+    (-> (http/get (format "https://anypoint.mulesoft.com/runtimefabric/api/organizations/%s/privatespaces/%s/connections" org-id ps-id)
+                   {:headers (default-headers)})
+         (parse-response)
+         :body
+         (->> (mapcat (juxt :vpns)))
+         (->> (apply concat))
+         (add-extra-fields :id :connection-id
+                           :name :connection-name
+                           :type #(if (:vpn-id %) :vpn :tgw)
+                           :status #(or (:vpn-connection-status %))
+                           :routes #(or (->> % :static-routes (str/join ",")))))))
+
+(defn get-cloudhub20-connections [{:keys [args] [org ps] :args}]
+  (let [[ps org] (reverse args)]
+    (-get-cloudhub20-connections org ps)))
+
+(defn conn->id [org ps conn]
+  (let [xs (->> (-get-cloudhub20-connections org ps)
+                (mapcat (juxt :vpns))
+                (apply concat)
+                (filter #(or (= (:name %) conn) (= (:id %) conn))))]
+
+    (cond
+      (= 1 (count xs)) (:connection-id (first xs))
+      (< 1 (count xs)) (throw (e/multiple-connections "Multiple connections found")))))
 
 (defmacro try-wrap [& body]
   `(try

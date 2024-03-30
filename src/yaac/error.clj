@@ -32,6 +32,8 @@
 (deferror multiple-target-name-found 1102)
 (deferror runtime-target-not-found 1103)
 (deferror multiple-runtime-targets 1104)
+(deferror multiple-private-sppace-found 1105)
+(deferror multiple-connections 1106)
 
 (deferror no-asset-found 2000 "No asset found")
 

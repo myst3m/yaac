@@ -17,7 +17,7 @@
              [log :as log]]
             [reitit.core :as r]
             [yaac.core :refer [*org* *env* *deploy-target*
-                               parse-response default-headers org->id env->id app->id org->name load-session!] :as yc]
+                               parse-response default-headers org->id ps->id env->id app->id org->name load-session!] :as yc]
             [yaac.error :as e]
             [clojure.string :as str]
             [clojure.tools.cli :refer [parse-opts]]
@@ -127,6 +127,17 @@
        :ch20 "CH2"
        :cloudhub2 "CH2"}
       (get (some-> x csk/->kebab-case-keyword) "CH2")))
+
+;; (defn create-transit-gateway [{:keys [args]
+;;                                [org ps] :args}]
+  
+;;   (let [org-id (org->id (or org *org* ))
+;;         ps-id (ps->id org-id ps)]
+;;     (-> (http/post (format "https://anypoint.mulesoft.com/runtimefabric/api/organizations/%s/privatespaces/%s/transitgateways " org-id ps-id)
+;;                    {:headers (default-headers)
+;;                     :body })))
+;;   )
+
 
 (defn create-api-instance [{:keys [group asset version uri deployment-type proxy-uri label technology args]
                             [org env] :args

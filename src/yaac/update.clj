@@ -16,7 +16,7 @@
              [http :as http]
              [log :as log]]
             [reitit.core :as r]
-            [yaac.core :refer [*org* *env* parse-response default-headers org->id env->id api->id org->name load-session!] :as yc]
+            [yaac.core :refer [*org* *env* parse-response default-headers org->id env->id api->id org->name ps->id conn->id load-session!] :as yc]
             [yaac.error :as e]
             [clojure.string :as str]
             [clojure.tools.cli :refer [parse-opts]]
@@ -35,10 +35,11 @@
         ""
         "Resources:"
         ""
-        "  - app [org] [env] <app> key=val       ...   Required to specify group, artifact name and version."
-        "  - asset -g <group> -a <asset> key=val ...   Required to specify group, artifact name and version."
-        "  - api [org] [env] <api> key=val                   ...   Required to specify group, artifact name and version."
-        "  - org [org] key=val                   ...   Required to specify group, artifact name and version."
+        "  - app [org] [env] <app> key=val       ...                    "
+        "  - asset -g <group> -a <asset> key=val ...                    "
+        "  - api [org] [env] <api> key=val       ...                    "
+        "  - org [org] key=val                   ...                    "
+        "  - conn [org] <private-space> <connection> ... key=val  " 
         ""
         "Keys:"
         "  app"
@@ -50,12 +51,14 @@
         "    - labels"
         "  api"
         "    - asset-version"
-        "  org"
+        "  org|organization"
         "    - v-cores-production"
         "    - v-cores-sandbox"
         "    - network-connections"
         "    - static-ips"
         "    - vpns"
+        "  conn|connection"
+        "    - static-routes         : ex. +172.17.0.0/16,+192.168.11.0/24"
         ""
         "Example:"
         ""
@@ -67,6 +70,9 @@
         ""
         "# Update API version with given asset version"
         "  > yaac update api hello-api asset-version=0.2.0"
+        ""
+        "# Update static routes on connections in a private space"
+        "  > yaac update conn T1 t1ps onpremise static-routes=172.17.0.0/16"
         ""]
        (str/join \newline)))
 
@@ -168,3 +174,37 @@
                     :body (edn->json body)})
          (parse-response)
          :body)))
+
+(defn update-cloudhub20-connection [{:keys [args static-routes]
+                                     [org ps conn] :args}]
+  (log/debug "static routes: " static-routes)
+  (let [[conn ps org] (reverse args)
+        org-id (org->id (or org *org*))
+        ps-id (ps->id org-id ps)
+        {c-id :connection-id c-name :connection-name current-routes :static-routes :as c}
+        (->> (yc/-get-cloudhub20-connections org-id ps-id)
+             (filter #(or (= conn (:connection-name %)) (= conn (:connection-id %))))
+             (first))
+        additional-routes (set (filter #(= "+" (subs % 0 1)) static-routes))
+        replace-routes (set (filter #(not= "+" (subs % 0 1)) static-routes))
+
+        merged-routes (if (seq replace-routes)
+                        replace-routes
+                        (reduce #(set (conj %1 (subs %2 1))) current-routes additional-routes))]
+
+    (-> (http/patch
+         (format "https://anypoint.mulesoft.com/runtimefabric/api/organizations/%s/privatespaces/%s/connections/%s" org-id ps-id c-id)
+         {:headers (default-headers)
+          :body (edn->json :camel {:id c-id
+                                   :name c-name
+                                   :static-routes merged-routes})})
+        (parse-response)
+        :body
+        ((juxt :vpns))
+        (->> (apply concat))
+        (yc/add-extra-fields :id :connection-id
+                             :name :connection-name
+                             :status (fn [x] (or (:vpn-connection-status x)))
+                             :local-asn :local-asn
+                             :routes (fn [x] (->> x :static-routes (str/join ",")))))
+    ))
