@@ -31,7 +31,7 @@
             [clojure.core.async :as async]
             [jansi-clj.core :as jansi]))
 
-(def version "0.5.3")
+(def version "0.6.0")
 
 ;;; main
 
@@ -440,6 +440,8 @@
                           :default false]
                          ["-d" "--debug" "See debug log"
                           :default false]
+                         ["-P" "--progress" "Display progress"
+                          :default false]
                          ["-V" "--http-trace" "Show HTTP request and response flow"
                           :default false]
                          ["-X" "--http-trace-detail" "Show HTTP request and response details"
@@ -610,7 +612,10 @@
                   *console* (async/chan)]
           (log/debug "Args: " args)
           ;; result is pushed to *console* channel
-          (let [pch (progress-loop)]
+          (let [pch (if (:progress options)
+                      (progress-loop)
+                      ;; dummy
+                      (async/chan))]
             (apply -cli args)
             (when (or (:debug options) (:http-trace options)) (println)) ;; Just for eye candy
             (loop [ch *console*]
