@@ -28,7 +28,8 @@
             [yaac.config :as cnf]
             [yaac.logs :as logs]
             [yaac.analyze :as ana]
-            [clojure.core.async :as async]))
+            [clojure.core.async :as async]
+            [jansi-clj.core :as jansi]))
 
 (def version "0.5.3")
 
@@ -553,6 +554,23 @@
    {:appenders {:println {:enabled? true}
                 :http-tracer {:enabled? false}}}))
 
+(defn progress-loop []
+  (let [op-ch (async/chan)]
+    (async/go-loop [i 0]
+      (let [op (async/poll! op-ch)]
+        (if (= op :completed)
+          (do (print (jansi/erase-line))
+              (flush))
+          (do (print (jansi/save-cursor)
+                     (jansi/erase-line)
+                     (jansi/a :bold (str (* i 10) " ms"))
+                     (jansi/restore-cursor))
+              (flush)
+              (Thread/sleep 10)
+              (recur (inc i))))))
+    op-ch))
+
+
 (defn cli [& args]
   (let [{:keys [options arguments summary errors] :as command-context} (parse-opts
                                                                          (map name args) ;; To string
@@ -592,15 +610,19 @@
                   *console* (async/chan)]
           (log/debug "Args: " args)
           ;; result is pushed to *console* channel
-          (apply -cli args)
-          (when (or (:debug options) (:http-trace options)) (println)) ;; Just for eye candy
-          (loop [ch *console*]
-            (let [result (async/<!! ch)]
-              (log/debug "result:" result)
-              (when-not (= result :done)
-                (print result)
-                (flush)
-                (recur ch)))))
+          (let [pch (progress-loop)]
+            (apply -cli args)
+            (when (or (:debug options) (:http-trace options)) (println)) ;; Just for eye candy
+            (loop [ch *console*]
+              (let [result (async/<!! ch)]
+                (async/put! pch :completed)
+                (log/debug "result:" result)
+                (when-not (= result :done)
+                  (print result)
+                  (flush)
+                  (recur ch))))
+            )
+          )
         (flush)
         (catch Exception e (print-error e))))))
 
