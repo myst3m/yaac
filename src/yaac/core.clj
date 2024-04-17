@@ -45,6 +45,14 @@
 (def ^:dynamic *no-cache*)
 (def ^:dynamic *no-multi-thread*)
 (def ^:dynamic *console*)
+(def mule-business-group-id "68ef9520-24e9-4cf2-b2f5-620025690913")
+
+(defmacro try-wrap [& body]
+  `(try
+     ~@body
+     (catch Exception e# )))
+
+
 
 (defn memoize-file [f]
   (let [memo-file (io/file (System/getenv "HOME") ".yaac" "cache")
@@ -229,6 +237,7 @@
         "  - user [org]                            Get users that belong to the organization"
         "  - connected-app                         Get connected applications"
         "  - runtime-target [org] [env]            Get runtime targets of RTF and CloudHub 2.0"
+        "  - policy [org] [env] api"
         "  - entitlement                           Get entitilements for each runtime"
         "  - node-port [org]                       Get available node ports for apps using TCP"
         "                                          This function is required to be authenticated by 'Act as an user'"
@@ -343,7 +352,7 @@
                            :assets)))
 
 ;; group-id can be handled, but if asset-id also is given, use :asset for the specific request for the asset
-(defmethod map->graphql :assets [{:keys [organization-ids labels all]
+(defmethod map->graphql :assets [{:keys [organization-ids labels all group-id]
                                   [org] :args
                                   :as opts}]
   (let [default-opts {:limit "30" :latest-versions-only "true"}
@@ -422,7 +431,7 @@
   (println "  assets: "  (take-nth 2 (:assets graphql-query-options-group)))
   (println "  asset:  "  (take-nth 2 (:asset graphql-query-options-group))))
 
-(defn graphql-search-assets [query-map]
+(defn graphql-search-assets [{:keys [group-id ] :as query-map}]
   ;; Mule API has 2 types of graphql query options.
   ;; 1. assets : query assets by Org IDs mainly -> response is in [:assets]
   ;; 2. asset  : query 1 asset for each version mainly -> response is in [:asset :other-version]
@@ -486,9 +495,9 @@
       (log/debug "Counts: " count-alist)
 
       (case output-type
-        :json (with-out-str (json/pprint data))
-        :edn (with-out-str (clojure.pprint/pprint data))
-        :yaml (yaml/generate-string data)
+        :json (with-out-str (json/pprint (mapv #(dissoc % :extra) data)))
+        :edn (with-out-str (clojure.pprint/pprint (mapv #(dissoc % :extra) data)))
+        :yaml (yaml/generate-string (mapv #(dissoc % :extra) data))
         (let [count-map (into {} (map #(vec (take 2 %)) count-alist))
               title-map (into {} (map #(vector (first %) (last %)) count-alist))]
           ;; count-alist [[:id] [{...}] :title-id]
@@ -540,18 +549,23 @@
                                    (into {})
                                    (doall))))))
 
-(defn get-assets [{:keys [group asset version args]
+(defn get-assets [{:keys [group asset version args all]
                    [org] :args
                    :as opts}]
-  (when-not (or (every? identity [group asset]) (every? not [group asset]))
-    (throw (e/invalid-arguments "A group and a name should be given both, or neighter." {:group group :asset asset})))
+  ;; (when-not (or (every? identity [group asset]) (every? not [group asset]))
+  ;;   (throw (e/invalid-arguments "A group and a name should be given both, or neighter." {:group group :asset asset})))
   (let []
     ;; Added group-id and asset-id as keys so as to query by asset(...)
     (-> (graphql-search-assets (cond-> opts
-                                  group (assoc :group-id (org->id group))
-                                  asset (assoc :asset-id asset)))
-         (add-extra-fields :group-name #(org->name (:group-id %)))
-         (->> (map #(assoc % :organization-name (or (org->name (:organization-id %)) "-")))))))
+                                 group (assoc :group-id (org->id (or group *org*)))
+                                 asset (assoc :asset-id asset)))
+        (->> (filter #(or all (and (= (:organization-id %) (org->id (or org *org*)))
+                                   (= (:group-id %) (or (try-wrap (org->id group))
+                                                        group
+                                                        (try-wrap (org->id org))
+                                                        (try-wrap (org->id *org*))))))))
+        (add-extra-fields :group-name #(org->name (:group-id %)))
+        (->> (map #(assoc % :organization-name (or (org->name (:organization-id %)) "-")))))))
 
 
 
@@ -1063,7 +1077,7 @@
         ps-id (ps->id org-id ps)]
     (-> (http/get (format "https://anypoint.mulesoft.com/runtimefabric/api/organizations/%s/privatespaces/%s/transitgateways" org-id ps-id)
                    {:headers (default-headers)})
-         (parse-response)
+        (parse-response)
          :body
          (add-extra-fields :id :id ;;(comp :id :resource-share :spec)
                            :name :name
@@ -1087,11 +1101,70 @@
 
     (cond
       (= 1 (count xs)) (or (:connection-id (first xs)) (:id (first xs)))
-      (< 1 (count xs)) (throw (e/multiple-connections "Multiple connections found")))))
+      (< 1 (count xs)) (throw (e/multiple-connections "Multiple connection found")))))
 
-(defmacro try-wrap [& body]
-  `(try
-     ~@body
-     (catch Exception e# )))
 
+(defn -get-api-policies [org env api]
+  (let [org-id (org->id (or org *org*))
+        env-id (env->id org-id (or env *env*))
+        api-id (api->id org-id env-id api)]
+    (-> (http/get (format "https://anypoint.mulesoft.com/apimanager/api/v1/organizations/%s/environments/%s/apis/%s/policies"
+                          org-id env-id api-id)
+                  {:headers (default-headers)})
+        (parse-response)
+        :body
+        :policies
+        (add-extra-fields :id :policy-id
+                          :asset-id (comp :asset-id :implementation-asset)
+                          :version (comp :asset-version :template)
+                          :type "regular"
+                          :order :order))))
+
+(defn -get-automated-api-policies [org env]
+  (let [org-id (org->id (or org *org*))
+        env-id (env->id org-id (or env *env*))]
+    (-> (http/get (format "https://anypoint.mulesoft.com/apimanager/api/v1/organizations/%s/automated-policies"
+                          org-id env-id)
+                  {:query-params {:environmentId env-id}
+                   :headers (default-headers)})
+        (parse-response)
+        :body
+        :automated-policies
+        (add-extra-fields :id :id
+                          :asset-id :asset-id
+                          :version :asset-version
+                          :type "automated"
+                          :order :order))))
+
+(defn get-api-policies [{:keys [args types]
+                         [org env api] :args}]
+  (let [[api env org] (reverse args)]
+    (->> (on-threads *no-multi-thread*
+           (-get-api-policies org env api)
+           (-get-automated-api-policies org env))
+         (filter #((set (or (seq types) ["automated" "regular"])) (-> % :extra :type))))))
+
+
+;; Need Titanium subscription
+(defn -get-monitoring-entity-id [org env entity-type]
+  (let [org-id (org->id org)
+        env-id (env->id org env)
+        etype (keyword entity-type)]
+    (-> (http/get (format "https://monitoring.anypoint.mulesoft.com/monitoring/archive/api/v1/organizations/%s/environments/%s/%s"
+                          org env entity-type)
+                  {:headers (default-headers)})
+        (parse-response)
+        :body)))
+
+
+
+(defn password-test-post []
+  (-> (http/post "https://login.salesforce.com/services/oauth2/token"
+                 {:query-params {"grant_type" "password"
+                                 "client_id" "3MVG9Rr0EZ2YOVMYfgg4NCfRt63Jo0z87mV.r3sp2J.mbmu2.RYiSzlC1zOApPYtxxYSb1fm.RMWHfzlBsF9f"
+                                 "client_secret" "9CE17EA1D976F036B72E6FC04C208742C7EC6D3C9851F7876FC6AA23CA25AA2D"
+                                 "username" "tmiyashita@tmiyashita-240319-795.demo"
+                                 "password" "GNU%Emacs29"}})
+      :body
+      ))
 

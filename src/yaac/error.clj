@@ -34,14 +34,17 @@
 (deferror multiple-runtime-targets 1104)
 (deferror multiple-private-sppace-found 1105)
 (deferror multiple-connections 1106)
+(deferror multiple-policies 1107)
 
 (deferror no-asset-found 2000 "No asset found")
 
+(deferror no-item 7999)
 (deferror no-session-store 8000)
 (deferror invalid-credentials 8001)
 (deferror auth-method-not-supported 8002)
 (deferror no-default-context 8003)
 (deferror not-supported-file-type 8004)
+
 
 (deferror error 9000 "Unexpected error")
 (deferror invalid-arguments 9001 "Invalid arguments")

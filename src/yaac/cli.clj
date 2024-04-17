@@ -233,10 +233,14 @@
                          ["conn"]
                          ["conn|{*args}"]
                          ["connection"]
-                         ["connection|{*args}"]]]
+                         ["connection|{*args}"]]
+                        
+                        ["|" {:handler yc/get-api-policies}
+                         ["policy"]
+                         ["policy|{*args}"]
+                         ["pol"]
+                         ["pol|{*args}"]]]
 
-                       
-                       
 
                        ;; Upload
                        (for [op ["up" "upload"]]
@@ -332,7 +336,9 @@
                            ["environement|{*args}" ]]
                           ["|"
                            ["api|{*args}" {:fields [:id :asset-id :asset-version]
-                                           :handler cr/create-api-instance}]]])
+                                           :handler cr/create-api-instance}]]
+                          ["|"
+                           ["policy|{*args}" {:handler cr/create-api-policy}]]])
 
                        ;; Describe
                        (for [op ["desc" "describe"]]

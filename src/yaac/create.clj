@@ -17,7 +17,7 @@
              [log :as log]]
             [reitit.core :as r]
             [yaac.core :refer [*org* *env* *deploy-target*
-                               parse-response default-headers org->id ps->id env->id app->id org->name load-session!] :as yc]
+                               parse-response default-headers org->id ps->id env->id api->id app->id org->name load-session!] :as yc]
             [yaac.error :as e]
             [clojure.string :as str]
             [clojure.tools.cli :refer [parse-opts]]
@@ -36,6 +36,7 @@
         " - organization"
         " - environment"
         " - api"
+        " - policy"
         ""
         "Options:"
         ""
@@ -44,7 +45,7 @@
         "Keys:"
         ""
         "  organization:"
-        "   - v-cores:             prod:sandbox:design             (default: 0.1:0.1:0)"
+        "   - v-cores:             prod:sandbox:design            (default: 0.1:0.1:0)"
         "   - parent:  "
         "  environment:"
         "   - type:               production|sandbox|design       (default: sandbox)"
@@ -52,7 +53,12 @@
         "   - technology:         mule4|flexGateway               (default: mule4)"
         "   - proxy-uri:          listen URL                      (defaul: http://0.0.0.0:8081)"
         "   - uri:                upstream URL"
-        "   - deployment-type:    deployment type ch20|rtf        (defaul: ch20)"   
+        "   - deployment-type:    deployment type ch20|rtf        (defaul: ch20)"
+        ""
+        "  policy:"
+        "   - ip-allowlist:"
+        "      * ip-expression    remote ip expression            (default: #[attributes.headers['x-forwarded-for']])"
+        "      * ips              allow list                      (default: 0.0.0.0/0)"
         ""
         "Examples:"
         ""
@@ -185,3 +191,50 @@
                          })
              (parse-response)
              :body)))))
+
+
+(defn- gen-policy-config [policy {:keys [ip-expression ips
+                                         delay-attempts maximum-requests queuing-limit expose-headers time-period-in-milliseconds delay-time-in-millis
+                                         maximum-requests time-period-in-milliseconds
+                                         
+                                         ]}]
+  (condp = (keyword policy)
+    :ip-allowlist {:ip-expression (or (first ip-expression) "#[attributes.headers['x-forwarded-for']]"),
+                   :ips (or ips ["0.0.0.0/0"])}
+    :spike-control {:delay-attempts (or (first delay-attempts) 1)
+                    :maximum-requests (or (first maximum-requests) 1)
+                    :queuing-limit (or (first queuing-limit) 5)
+                    :expose-headers (or (= (first expose-headers) "true") false)
+                    :time-period-in-milliseconds (or (first time-period-in-milliseconds) 1000)
+                    :delay-time-in-millis (or (first delay-time-in-millis) 1000)}
+    :rate-limiting {:rate-limits [{:maximum-requests (or (first maximum-requests) 1)
+                                   :time-period-in-milliseconds (or (first time-period-in-milliseconds) 120000)}]}
+    (throw (e/not-implemented "Given policy is not implemented" {:name policy}))))
+
+(defn -create-api-policy [org env api policy & [opts]]
+  (let [org-id (org->id (or org *org*))
+        env-id (env->id org-id (or env *env*))
+        api-id (api->id org-id env-id api)
+        policies (->> (yc/get-assets {:types ["policy"] :args [yc/mule-business-group-id]})
+                      (filter #(re-find (re-pattern policy) (:asset-id %)) ))]
+
+    (cond 
+      (= 0 (count policies)) (throw (e/no-item "No policy"))
+      (< 1 (count policies) ) (throw (e/multiple-policies "Multiple policy found" {:extra policies}))
+      :else
+      (let [[{:keys [asset-id version]}] policies]
+        (-> (http/post (format "https://anypoint.mulesoft.com/apimanager/api/v1/organizations/%s/environments/%s/apis/%s/policies" org-id env-id api-id)
+                       {:headers (default-headers)
+                        :body (edn->json {:api-version-id api-id
+                                          :asset-id asset-id
+                                          :asset-version version
+                                          :configuration-data (gen-policy-config asset-id opts)
+                                          :groupId yc/mule-business-group-id})})
+            (parse-response)
+            :body)))))
+
+(defn create-api-policy [{:keys [args]
+                          [org env api policy] :args
+                          :as opts}]
+  (let []
+    (-create-api-policy org env api policy (dissoc opts :args))))
