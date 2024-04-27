@@ -28,8 +28,10 @@
             [yaac.config :as cnf]
             [yaac.logs :as logs]
             [yaac.analyze :as ana]
+            [yaac.auth :as ya]
             [clojure.core.async :as async]
-            [jansi-clj.core :as jansi]))
+            [jansi-clj.core :as jansi]
+            [yaac.auth :as auth]))
 
 (def version "0.6.0")
 
@@ -374,7 +376,15 @@
                           ["|api|{*args}" {:handler desc/describe-api-instance}]
 
                           ])
-
+                       ;; Auth for Authorization
+                       ["auth"
+                        ["" {:help true}]
+                        ["|azure" {:options auth/options}]
+                        ["|azure|{*args}" {:fields [[:extra :tenant]
+                                                    :token-type
+                                                    :expires-in
+                                                    :scope]
+                                           :handler auth/auth-azure}]]
                        ;; Update
                        ["update" {:options upd/options
                                   :usage upd/usage}

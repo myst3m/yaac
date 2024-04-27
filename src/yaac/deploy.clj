@@ -310,7 +310,7 @@
                                                                                 node-port (assoc :tcp {:inbound
                                                                                                        {:ports [{:portNumber (parse-long node-port)
                                                                                                                  :applicationPortNumber (or (parse-long target-port) 8081)}]}}))}}
-                                          (and (not v-cogres) instance-type) (assoc-in [:target :deploymentSettings :instanceType] (str "mule." (first instance-type)))
+                                          (and (not v-cores) instance-type) (assoc-in [:target :deploymentSettings :instanceType] (str "mule." (first instance-type)))
                                           v-cores (assoc-in [:application :vCores] (as-> (parse-double (first v-cores)) x
                                                                                      (if (= 0.0 (mod x 1)) (long x) x)) )))}
                       (->> (http-fn url))
