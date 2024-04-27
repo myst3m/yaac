@@ -58,6 +58,7 @@
         "  update    asset|api ...                                  Update resources configs"
         "  download  proxy ...                                      Download proxies as Jar file"
         "  config    context|credential|clear-cache ...             Configurate contexts"
+        "  auth      azure                                          OAuth2 authorization code flow"
         ""
         "Please refer to the manual page for more information."
         ""]
