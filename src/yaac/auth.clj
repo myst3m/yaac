@@ -76,7 +76,6 @@
 (defn app [tenant client-id client-secret redirect-uri pipe]
   (rh/ring-handler
    (rh/router [["/oauth2/callback" {:get (fn [{:keys [params] :as req}]
-                                           (println req)
                                            (let [{:strs [code state]} params]
                                              (-> (http/post (str "https://login.microsoftonline.com/" tenant "/oauth2/v2.0/token")
                                                             {:form-params {:client_id client-id
