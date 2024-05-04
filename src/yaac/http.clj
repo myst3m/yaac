@@ -64,13 +64,13 @@
                     http/get)
         ]
 
-    (log/debug "URL:" (str (or (and internal internal-url) public-url (throw (e/app-not-found)))
+    (log/debug "URL:" (str (or (and internal internal-url) public-url )
                            (first path)))
     (log/debug "Body:" (dissoc opts :args :interanl :path :method))
 
     (log/debug "Method:" method-fn)
 
-    (->> (method-fn (str (or (and internal internal-url) public-url (throw (e/app-not-found)))
+    (->> (method-fn (str (or (and internal internal-url) public-url (throw (e/app-not-found "No app found or not running CloudHub 2.0")))
                         (first path))
                    {:body (edn->json (dissoc opts :args :interanl :path :method))})
          (yc/parse-response :raw)
