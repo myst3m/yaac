@@ -511,8 +511,9 @@
             (loop []
               (let [results (handler cooked-params)]
                 (if (= :raw (:output-format data))
-                  (do (async/put! *console* (edn->json :raw results))
-                      (async/put! *console* "\n")
+                  
+                  (do (async/put! *console* (with-out-str (json/pprint results)))
+                      (async/put! *console* \newline)
                       (async/>! *console* :done))
                   (let [
                         no-header (:no-header cooked-params)
