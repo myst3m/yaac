@@ -483,7 +483,7 @@
   (log/debug "output-type:" output-type)
   (log/debug "first data:" (first data))
   (log/debug "options:" (dissoc opts :summary))
-  
+
   (cond
     (sequential? data)
     (let [data (keep #(if (instance? clojure.lang.ExceptionInfo %) (ex-data %) %) data) ;; Anypoint reponses [null] for get proxy...

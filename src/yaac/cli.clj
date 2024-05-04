@@ -28,10 +28,10 @@
             [yaac.config :as cnf]
             [yaac.logs :as logs]
             [yaac.analyze :as ana]
-            [yaac.auth :as ya]
             [clojure.core.async :as async]
             [jansi-clj.core :as jansi]
-            [yaac.auth :as auth]))
+            [yaac.auth :as auth]
+            [yaac.http :as yh]))
 
 (def version "0.6.0")
 
@@ -59,6 +59,7 @@
         "  download  proxy ...                                      Download proxies as Jar file"
         "  config    context|credential|clear-cache ...             Configurate contexts"
         "  auth      azure                                          OAuth2 authorization code flow"
+        "  http                                                     Request HTTP to an application"
         ""
         "Please refer to the manual page for more information."
         ""]
@@ -378,14 +379,22 @@
 
                           ])
                        ;; Auth for Authorization
-                       ["auth"
+                       ["auth" {:options auth/options
+                                :usage auth/usage}
                         ["" {:help true}]
-                        ["|azure" {:options auth/options}]
+                        ["|azure" {:help true}]
                         ["|azure|{*args}" {:fields [[:extra :tenant]
                                                     :token-type
                                                     :expires-in
                                                     :scope]
                                            :handler auth/auth-azure}]]
+
+                       ;; HTTP request to app
+                       ["http" {:options yh/options
+                                :usage yh/usage}
+                        ["" {:help true}]
+                        ["|{*args}" {:handler yh/request
+                                     :output-format :raw}]]
                        ;; Update
                        ["update" {:options upd/options
                                   :usage upd/usage}
@@ -500,52 +509,57 @@
           (try
             (when-not no-token (yc/load-session!))
             (loop []
-              (let [results (handler cooked-params)
-                    no-header (:no-header cooked-params)
-                    continue? (:continue (meta results))
-                    ;; If given fields starts with "+", it is added to default fields
-                    {cmd-given-fileds :fields} cooked-params
-                    ;; Fields declared in the router
+              (let [results (handler cooked-params)]
+                (if (= :raw (:output-format data))
+                  (do (async/put! *console* (edn->json :raw results))
+                      (async/put! *console* "\n")
+                      (async/>! *console* :done))
+                  (let [
+                        no-header (:no-header cooked-params)
+                        continue? (:continue (meta results))
+                        ;; If given fields starts with "+", it is added to default fields
+                        {cmd-given-fileds :fields} cooked-params
+                        ;; Fields declared in the router
 
-                    ;; Success: [{:extra {:org ....}}]
-                    ;; Error:  #error{:data {:extra [{:org T1, :env Sandbox, :name hello, :target t1ps, :status 400, :message Configuring the instance type is not compatible with your pricing model}], :state 9000}}
-                    sample (first results)
-                    
-                    default-fields (or (:fields data) (map #(vector :extra %) (keys (or (:extra sample)
-                                                                                        (:extra (ex-data sample))
-                                                                                        (:extra (first (:errors (ex-data sample)))) ;; For error object returned by multi-threaded
-                                                                                        {}))) [])
-                    ;; 
-                    specific-formatter (or (:formatter data) [])]
+                        ;; Success: [{:extra {:org ....}}]
+                        ;; Error:  #error{:data {:extra [{:org T1, :env Sandbox, :name hello, :target t1ps, :status 400, :message Configuring the instance type is not compatible with your pricing model}], :state 9000}}
+                        sample (first results)
+
+                        default-fields (or (:fields data) (map #(vector :extra %) (keys (or (:extra sample)
+                                                                                            (:extra (ex-data sample))
+                                                                                            (:extra (first (:errors (ex-data sample)))) ;; For error object returned by multi-threaded
+                                                                                            {}))) [])
+                        ;; 
+                        specific-formatter (or (:formatter data) [])]
 
 
-                ;; (log/debug "default fields:" default-fields)
-                ;; (log/debug "Fields: " fs)
-                (log/debug "Output format: " (or (:output-format cooked-params) "Not specified"))
+                    ;; (log/debug "default fields:" default-fields)
+                    ;; (log/debug "Fields: " fs)
+                    (log/debug "Output format: " (or (:output-format cooked-params) "Not specified"))
 
-                ;; If no Fields is specified, JSON format is used to output
-                (cond->> (if (fn? specific-formatter)
-                           (do (specific-formatter (or (some-> (:output-format cooked-params) csk/->kebab-case-keyword)
-                                                       (some-> (:output-format data) csk/->kebab-case-keyword))
-                                                   results
-                                                   cooked-params))
-                           (let [preferred-fields (filter #(re-find #"^[^\+]" (name %)) cmd-given-fileds)]
-                             (yc/default-format-by (cond->> cmd-given-fileds
-                                                     :always (map #(str/replace (name %) #"^\+" ""))
-                                                     :always  (map #(mapv keyword (str/split % #"\.")))
-                                                     (not (seq preferred-fields)) (into default-fields)
-                                                     :always (distinct))
-                                                   (or (some-> (:output-format cooked-params) csk/->kebab-case-keyword)
-                                                       (some-> (:output-format data) csk/->kebab-case-keyword)
-                                                       (if (seq default-fields) :short :json))
-                                                   results
-                                                   (assoc cooked-params :no-header (or no-header continue?)))))
-                  (or (not continue?) (and (seq results) continue?)) (async/>!! *console*))
-                (if continue?
-                  (do
-                    (Thread/sleep 3000)
-                    (recur))
-                  (async/>!! *console* :done))))
+                    ;; If no Fields is specified, JSON format is used to output
+                    (cond->> (if (fn? specific-formatter)
+                               (do (specific-formatter (or (some-> (:output-format cooked-params) csk/->kebab-case-keyword)
+                                                           (some-> (:output-format data) csk/->kebab-case-keyword))
+                                                       results
+                                                       cooked-params))
+                               (let [preferred-fields (filter #(re-find #"^[^\+]" (name %)) cmd-given-fileds)]
+                                 (yc/default-format-by (cond->> cmd-given-fileds
+                                                         :always (map #(str/replace (name %) #"^\+" ""))
+                                                         :always  (map #(mapv keyword (str/split % #"\.")))
+                                                         (not (seq preferred-fields)) (into default-fields)
+                                                         :always (distinct))
+                                                       (or (some-> (:output-format cooked-params) csk/->kebab-case-keyword)
+                                                           (some-> (:output-format data) csk/->kebab-case-keyword)
+                                                           (if (seq default-fields) :short :json))
+                                                       results
+                                                       (assoc cooked-params :no-header (or no-header continue?)))))
+                      (or (not continue?) (and (seq results) continue?)) (async/>!! *console*))
+                    (if continue?
+                      (do
+                        (Thread/sleep 3000)
+                        (recur))
+                      (async/>!! *console* :done))))))
             (catch Exception e (do
                                  (print-error e cooked-params)
                                  (async/>!! *console* :done)))))))

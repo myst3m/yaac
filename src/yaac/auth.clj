@@ -66,7 +66,7 @@
         "Example:"
         ""
         "# Run authorization flow with Azure Entre"
-        "  > yaac auth azure tenant=your-tenant client-id=zzz client-secret zzz"
+        "  > yaac auth azure tenant=your-tenant client-id=zzz client-secret=zzz"
         ""]
        (str/join \newline)))
 
@@ -75,7 +75,8 @@
 
 (defn app [tenant client-id client-secret redirect-uri pipe]
   (rh/ring-handler
-   (rh/router [["/oauth2/callback" {:get (fn [{:keys [params]}]
+   (rh/router [["/oauth2/callback" {:get (fn [{:keys [params] :as req}]
+                                           (println req)
                                            (let [{:strs [code state]} params]
                                              (-> (http/post (str "https://login.microsoftonline.com/" tenant "/oauth2/v2.0/token")
                                                             {:form-params {:client_id client-id
@@ -97,7 +98,6 @@
 
 (defn auth-azure [{:keys [tenant client-id client-secret redirect-uri port]}]
   (let [con (System/console)]
-    
     (let [port (or (first port) 9180)
           tenant (or (first tenant) (.readLine con "%s" (into-array ["tenant: "])))
           client-id (or (first client-id) (.readLine con "%s" (into-array ["client id: "])))
