@@ -587,6 +587,8 @@
                             :status #(get-in % [:application :status])
                             :target #(target->name org-id env-id (get-in % [:target :target-id])))))))
 
+(def -get-container-applications (memoize -get-container-applications))
+
 (defn -get-runtime-fabrics [org]
   (let [org (or org *org*)
         org-id (org->id org)]
@@ -836,6 +838,7 @@
         )))
 
 
+(def -get-hybrid-applications (memoize -get-hybrid-applications))
 
 (defn -get-deployed-applications [org env]
   (on-threads *no-multi-thread*
@@ -873,6 +876,7 @@
                                                                                       :env (map :name (-get-environments org))}}))
           (->> (-get-deployed-applications org env)
                (filter #(re-find (re-pattern (or (str/join search-term) ".")) (:name %)))))))))
+
 
 (defn -get-api-contracts [org env api]
   (let [org-id (org->id org)
