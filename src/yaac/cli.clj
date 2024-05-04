@@ -497,8 +497,8 @@
                           (:output-format data) (assoc :output-format (:output-format data))) ;;merge
           ]
 
-      (log/debug (r/match->path matched-route))
-      (log/debug (dissoc cooked-params :summary))
+      (log/debug "route:" (r/match->path matched-route))
+      (log/debug "cooked params:" (dissoc cooked-params :summary))
       (log/trace data)
 
       (if (or (:help cooked-params) (nil? handler))
