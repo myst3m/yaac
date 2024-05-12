@@ -1172,3 +1172,157 @@
       :body
       ))
 
+
+
+(def route
+  ["get" {:options options
+          :usage usage}
+   ["" {:help true}]   
+   ["|-h" {:help true}]
+   ["|" {:fields [:name :id :parent-name]
+         :handler get-organizations}
+    ;; Get orgs
+    ["org"]
+    ["org|{*args}"]
+    ["organization"]
+    ["organization|{*args}"]]
+
+   
+   
+   ;; Get envs
+   ["|" {:fields [:name :id :type]
+         :handler get-environments}
+    ["env"]
+    ["env|{*args}"]
+    ["environment"]
+    ["environment|{*args}"]]
+   
+   ;; Get assets
+   ["|" {:fields [:organization-id :group-id [:extra :group-name] :asset-id  :type :version]
+         :handler get-assets}
+    ["asset"]
+    ["asset|{*args}"]]
+   
+   
+   ;; Get proxy
+   ["|" {:fields [:organization-id :environment-id :id :application-name :type :target-type :target-name ]
+         :handler get-api-proxies}
+    ["proxy"]
+    ["proxy|{*args}"]]
+
+   ;; Get apps
+   ["|" {:fields [[:extra :org]
+                  [:extra :env]
+                  :name
+                  :id
+                  [:extra :status]
+                  [:extra :target]]
+         
+         :handler get-deployed-applications}
+    ["app"]
+    ["app|{*args}"]
+    ["application"]
+    ["application|{*args}"]]
+
+
+   ;; Get runtime fabrics
+   ["|" {:fields [:name :id :status :desired-version :vendor :region]
+         :handler get-runtime-fabrics}
+    ["rtf"]
+    ["rtf|{*args}"]
+    ["runtime-fabric"]
+    ["runtime-fabric|{*args}"]]
+
+   ;; Get runtime targets
+   ["|" {:fields [:name :type :id :region :status]
+         :handler get-runtime-targets}
+    ["rtt"]
+    ["rtt|{*args}"]
+    ["runtime-target"]
+    ["runtime-target|{*args}"]]
+
+
+   ;; Get servers
+   ["|" {:fields [:name :id :mule-version :agent-version :status
+                  [:runtime-information :jvm-information :runtime :name]
+                  [:runtime-information :jvm-information :runtime :version]
+                  [:runtime-information :os-information :name]
+                  
+                  ]
+         :handler get-servers}
+    ["serv"]
+    ["serv|{*args}"]
+    ["server"]
+    ["server|{*args}"]]
+   
+   ;; Get private spaces
+   ["|" {:fields [:id :name :status :region]
+         :handler get-cloudhub20-privatespaces}
+    ["ps" ]
+    ["ps|{*args}"]
+    ["private-space"]
+    ["private-space|{*args}"]]
+   
+   ;; Get apis
+   ["|" {:fields [:id :asset-id :exchange-asset-name :status :technology 
+                  :product-version :asset-version]
+         :handler get-api-instances}
+    ["api"]
+    ["api|{*args}"]
+    ["api-instance"]
+    ["api-instance|{*args}"]]
+
+   ;; Get enttitlements
+   ["|" {:handler get-entitlements
+         ;;:fields
+         ;; [:id :name
+         ;;  [:entitlements :v-cores-production :assigned :as "production"]
+         ;;  [:entitlements :v-cores-sandbox :assigned :as "sandbox"]
+         ;;  [:entitlements :static-ips :assigned :as "static-ip"]
+         ;;  [:entitlements :network-connections :assigned :as "connections"]
+         ;;  [:entitlements :vpns :assigned :as "vpn"]]
+         }
+    ["entitlement"]
+    ["entitlement|{*args}"]
+    ["ent"]
+    ["ent|{*args}"]]
+
+
+   ;; Get available node ports
+   ["|" {:handler get-available-node-ports}
+    ["node-port"]
+    ["node-port|{*args}"]
+    ["np"]
+    ["np|{*args}"]]
+   
+   ;; Contracts
+   ["|" {:fields [[:application :name] :id :status :api-id [:extra :api-name]]
+         :handler get-api-contracts}
+    ["contract"]
+    ["contract|{*args}"]
+    ["cont"]
+    ["cont|{*args}"]]
+
+   ["|" {:fields [:client-name :grant-types]
+         :handler get-connected-applications}
+    ["connected-app"]
+    ["connected-app|{*args}"]
+    ["ca"]
+    ["ca|{*args}"]]
+   
+   ["|" {:fields [:username :id :last-name :email :org-type]
+         :handler get-user}
+    ["user"]
+    ["user|{*args}"]]
+
+   ["|" {:handler get-cloudhub20-connections}
+    ["conn"]
+    ["conn|{*args}"]
+    ["connection"]
+    ["connection|{*args}"]]
+   
+   ["|" {:handler get-api-policies}
+    ["policy"]
+    ["policy|{*args}"]
+    ["pol"]
+    ["pol|{*args}"]]])

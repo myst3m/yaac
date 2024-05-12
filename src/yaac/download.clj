@@ -59,6 +59,8 @@
         ""]
     (str/join \newline)))
 
+(def options [])
+
 (defn download-api-proxies [{:keys [args]}]
   (let [[api env org] (reverse args) ;; app has to be specified
         org (or org *org*)           ;; If specified, use it
@@ -79,3 +81,15 @@
                   {:status status :path jar-path})))))))
 
 
+
+(def route
+  ["download" {:options options
+               :usage usage}
+   ["" {:help true}]   
+   ["|-h" {:help true}]
+   ["|proxy" {:help true}] 
+   ["|proxy|{*args}" {:fields [:status]
+                      :handler download-api-proxies}]
+   ["|api" {:help true}]
+   ["|api|{*args}" {:fields [:status :path]
+                    :handler download-api-proxies}]])

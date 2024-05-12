@@ -116,3 +116,28 @@
 
 
 
+(def route
+  (for [op ["conf" "config"]]
+    [op {:options  options
+         :usage    usage
+         :no-token true
+         :fields   [:status]}
+     ["" {:help true}]
+     ["|-h" {:help true}]
+     ["|ctx" {:fields  [:organization :environment :deploy-target]
+              :handler current-context}]
+     ["|ctx|{*args}" {:fields  [:organization :environment :deploy-target]
+                      :handler config-context}]
+     ["|context" {:fields  [:organization :environment :deploy-target]
+                  :handler current-context}]
+
+     ["|context|{*args}" {:fields  [:organization :environment :deploy-target]
+                          :handler config-context}]
+     ["|cred" {:handler config-credentials}]
+     ["|cred|{*args}" {:handler config-credentials}]
+     ["|credential" {:handler config-credentials}]
+     ["|credential|{*args}" {:handler config-credentials}]
+     ["|clear-cache" {:handler clear-cache}]
+     ["|cc" {:handler clear-cache}]
+     ["|clear-cache|{*args}" {:handler clear-cache}]
+     ["|cc|{*args}" {:handler clear-cache}]]))

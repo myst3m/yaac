@@ -508,6 +508,22 @@
             :always :body))))))
 
 
+(def route
+  (for [op ["dep" "deploy"]]
+    [op {:options options
+         :usage usage}
+     ["" {:help true}]   
+     ["|-h" {:help true}]
+     ["|app" {:help true}]
+     ["|app|{*args}" {:handler deploy-application}]
+     ["|proxy|{*args}" {:fields [:organization-id
+                                 :environment-id
+                                 :id
+                                 :api-id
+                                 :application-name
+                                 :type
+                                 :target-id]
+                        :handler deploy-api-proxy}]]))
 
 
 

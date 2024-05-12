@@ -69,6 +69,7 @@
 
 (def options [])
 
+
 ;; (defn login* [{:keys [args] :as opts}]
 ;;   (let [{:keys [help summary]} (yc/ext-parse-opts opts login-options)]
 ;;     (println (login-usage summary))))
@@ -202,4 +203,15 @@
 
 
 
+
+
+(def route
+  ["login" {:options options
+            :usage usage
+            :no-token true}
+   ["" {:help true}]
+   ["|{*args}" {:fields [:token-type
+                         :access-token
+                         :expires-in]
+                :handler login}]])
 

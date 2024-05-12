@@ -238,3 +238,29 @@
                           :as opts}]
   (let []
     (-create-api-policy org env api policy (dissoc opts :args))))
+
+
+
+(def route
+  (for [op ["c" "create"]]
+    [op {:options options
+         :usage usage}
+     ["" {:help true}]   
+     ["|-h" {:help true}]
+     ["|" {:help true}
+      ["org"]
+      ["organization"]]
+     ["|" {:handler create-organization}
+      ["org|{*args}" ]
+      ["organization|{*args}" ]]
+     ["|" {:help true}
+      ["env"]
+      ["environement"]]
+     ["|" {:handler create-environment}
+      ["env|{*args}" ]
+      ["environement|{*args}" ]]
+     ["|"
+      ["api|{*args}" {:fields [:id :asset-id :asset-version]
+                      :handler create-api-instance}]]
+     ["|"
+      ["policy|{*args}" {:handler create-api-policy}]]]))

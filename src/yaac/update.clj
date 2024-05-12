@@ -221,3 +221,35 @@
                                     :type type
                                     :routes (comp #(str/join "," %) :routes)))
       (throw (e/not-implemented "This type is not supported" {:type type :id id })))))
+
+(def route
+  ["update" {:options options
+             :usage usage}
+   ["" {:help true}]   
+   ["|-h" {:help true}]
+   ["|app" {:help true}]
+   ["|app|{*args}" {:fields [[:extra :id]
+                             [:extra :name]
+                             ;;[:application :v-cores]
+                             ;;[:target :replicas]
+                             [:extra :status]]
+                    :handler update-app-config}]
+
+   ["|asset" {:help true}]
+   ["|asset|{*args}" {:fields [:status]
+                      :handler update-asset-config}]
+   ["|api" {:help true}]
+   ["|api|{*args}" {:fields [:id :asset-version :technology [:endpoint :deployment-type] [:endpoint :uri] [:endpoint :proxy-uri]]
+                    :handler update-api-config}]
+   ["|org" {:help true}]
+   ["|org|{*args}" {:handler update-organization-config
+                    :fields [:id :name
+                             [:entitlements :v-cores-production :assigned]
+                             [:entitlements :v-cores-sandbox :assigned]
+                             [:entitlements :static-ips :assigned]
+                             [:entitlements :network-connections :assigned]
+                             [:entitlements :vpns :assigned]]}]
+   ["|connection" {:help true}]
+   ["|conn" {:help true}]
+   ["|connection|{*args}" {:handler update-cloudhub20-connection}]
+   ["|conn|{*args}" {:handler update-cloudhub20-connection}]])

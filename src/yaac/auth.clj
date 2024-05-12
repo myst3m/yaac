@@ -128,3 +128,15 @@
             result (<!! pipe)]
         (token-client)
         (yc/add-extra-fields [result] :tenant tenant)))))
+
+
+(def route
+  ["auth" {:options options
+           :usage usage}
+   ["" {:help true}]
+   ["|azure" {:help true}]
+   ["|azure|{*args}" {:fields [[:extra :tenant]
+                               :token-type
+                               :expires-in
+                               :scope]
+                      :handler auth-azure}]])

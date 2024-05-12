@@ -199,3 +199,13 @@
         :JAR (upload-jar opts)
         :RAML (upload-raml opts)
         :else (throw (e/not-supported-file-type "No JAR/ZIP or RAML" {:file file-path}))))))
+
+(def route
+  (for [op ["up" "upload"]]
+    [op {:options options
+         :usage usage}
+     ["" {:help true}]   
+     ["|-h" {:help true}]
+     ["|asset" {:help true}]
+     ["|asset|{*args}" {:fields [:organization-id :group-id [:extra :group-name] :name :asset-id  :type :version]
+                        :handler upload-asset}]]))

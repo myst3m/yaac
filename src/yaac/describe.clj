@@ -161,3 +161,38 @@
                    {:headers (default-headers)})
          (parse-response)
          :body)))
+
+(def route
+  (for [op ["desc" "describe"]]
+    [op {:options options
+         :usage usage}
+     ["" {:help true}]   
+     ["|-h" {:help true}]
+
+     ["|org" {:handler describe-organization}]
+     ["|organization" {:handler describe-organization}]
+     ["|org|{*args}" {:handler describe-organization}]
+     ["|organization|{*args}" {:handler describe-organization}]
+
+     ["|env" {:handler describe-environments}]
+     ["|env|{*args}" {:handler describe-environments}]
+     ["|environment" {:handler describe-environments}]
+     ["|environment|{*args}" {:handler describe-environments}]
+     
+     ["|app" {:help true}]
+     ["|application" {:help true}]
+     ["|app|{*args}" {:fields [:id :name
+                               [:extra :status]
+                               [:application :status :as "pod"]
+                               [:application :v-cores]
+                               [:target :replicas]
+                               [:target :deployment-settings :http :inbound :public-url]
+                               [:target :deployment-settings :http :inbound :internal-url]]
+                      :handler describe-application}]
+     ["|application|{*args}" {:handler describe-application}]
+     ["|asset" {:help true}]
+     ["|asset|{*args}" {:handler describe-asset}]
+     ["|api" {:help true}]
+     ["|api|{*args}" {:handler describe-api-instance}]
+
+     ]))

@@ -95,3 +95,10 @@
                            :body (edn->json body-params)})
            (yc/parse-response :raw)
            :body))))
+
+(def route
+  ["http" {:options options
+           :usage usage}
+   ["" {:help true}]
+   ["|{*args}" {:handler request
+                :output-format :raw}]])

@@ -216,3 +216,30 @@
             ;; body is nil on HTTP 204
             (dissoc :body)
             )))))
+
+
+(def route
+  (for [op ["del" "delete"]]
+    [op {:options options
+         :usage usage}
+     ["" {:help true}]
+     ["|-h" {:help true}]                          
+     ["|org" {:help true}]
+     ["|org|{*args}" {:fields [:status]
+                      :handler delete-organization}]
+     
+     ["|app"]
+     ["|app|{*args}" {:fields [:status [:extra :org] [:extra :env] [:extra :app] ]
+                      :handler delete-application}]
+     ["|api"]
+     ["|api|{*args}" {:fields [:status]
+                      :handler delete-api-instance}]
+     ["|contract"]
+     ["|cont"]
+     ["|contract|{*args}" {:fields [:status]
+                           :handler delete-api-contracts}]
+     ["|cont|{*args}" {:fields [:status]
+                       :handler delete-api-contracts}]
+     ["|asset"]
+     ["|asset|{*args}" {:fields [:status [:extra :group] [:extra  :asset] [:extra :version]]
+                        :handler delete-asset}]]))

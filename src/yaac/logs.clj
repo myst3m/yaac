@@ -62,3 +62,11 @@
       (reset! latest-timestamp (inc (:timestamp (last log-data)))))
     (with-meta log-data {:continue follow})))
 
+
+(def route 
+  ["logs" {:options options
+           :usage usage}
+   ["" {:help true}]
+   ["|-h" {:help true}]
+   ["|app|{*args}" {:handler get-container-application-log
+                    :fields [[:extra :timestamp] :log-level [:extra :message]]}]])
