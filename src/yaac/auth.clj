@@ -61,8 +61,9 @@
         "    - tenant"
         "    - client-id"
         "    - client-secret"
-        "    - redirect-uri    (default: http://localhost:9180/oauth2/callback"
-        ""
+        "    - redirect-uri    (default: http://localhost:9180/oauth2/callback)"
+        "    - scope           (default: https://graph.microsoft.com/.default)" 
+
         "Example:"
         ""
         "# Run authorization flow with Azure Entre"
@@ -73,17 +74,18 @@
 (def options [["-p" "--port <number>" "Listen port to receive redirected response from IdP"
                :parse-fn parse-long]])
 
-(defn app [tenant client-id client-secret redirect-uri pipe]
+(defn app [tenant client-id client-secret redirect-uri scope pipe]
   (rh/ring-handler
    (rh/router [["/oauth2/callback" {:get (fn [{:keys [params] :as req}]
                                            (let [{:strs [code state]} params]
                                              (-> (http/post (str "https://login.microsoftonline.com/" tenant "/oauth2/v2.0/token")
-                                                            {:form-params {:client_id client-id
-                                                                           :scope (url-encode "https://graph.microsoft.com/.default")
-                                                                           :code code
-                                                                           :redirect_uri redirect-uri
-                                                                           :grant_type "authorization_code"
-                                                                           :client_secret client-secret}})
+                                                            (doto {:form-params {:client_id client-id
+                                                                            :scope scope
+                                                                            :code code
+                                                                            :redirect_uri redirect-uri
+                                                                            :grant_type "authorization_code"
+                                                                            :client_secret client-secret}}
+                                                              prn))
                                                  :body
                                                  (json->edn)
                                                  (as-> x (do (>!! pipe x) x)
@@ -95,13 +97,14 @@
 
 
 
-(defn auth-azure [{:keys [tenant client-id client-secret redirect-uri port]}]
+(defn auth-azure [{:keys [tenant client-id client-secret redirect-uri scope port]}]
   (let [con (System/console)]
     (let [port (or (first port) 9180)
           tenant (or (first tenant) (.readLine con "%s" (into-array ["tenant: "])))
           client-id (or (first client-id) (.readLine con "%s" (into-array ["client id: "])))
           client-secret (or (first client-secret) (.readLine con "%s" (into-array ["client secret: "])))
           redirect-uri (or (first redirect-uri) (format "http://localhost:%d/oauth2/callback" port))
+          scope (or (first scope) "https://graph.microsoft.com/.default")
           pipe (chan)]
       
       (println
@@ -118,13 +121,13 @@
                   (->> {:client_id client-id
                         :response_type "code"
                         :redirect_uri (url-encode redirect-uri)
-                        :scope (url-encode "https://graph.microsoft.com/.default")
+                        :scope (url-encode scope)
                         :state "12345"}
                        (map (fn [[k v] ] (str (name k) "=" v)))
                        (str/join "&")))
              ""]
             (str/join \newline)))
-      (let [token-client (run-server (app tenant client-id client-secret redirect-uri pipe) {:host "0.0.0.0" :port 9180})
+      (let [token-client (run-server (app tenant client-id client-secret redirect-uri scope pipe) {:host "0.0.0.0" :port 9180})
             result (<!! pipe)]
         (token-client)
         (yc/add-extra-fields [result] :tenant tenant)))))
