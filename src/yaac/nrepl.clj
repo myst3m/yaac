@@ -43,11 +43,14 @@
     (when-not dst
       (println (usage))
       (System/exit 0))
-    
+
     (binding [*nrepl-host* (or (:Host headers) host)]
       (let [{:keys [error status]} (emit dst-uri ":trial")]
         (cond
-          error (println "Not connected")
+          error (do
+                  (log/debug error)
+                  (println "Could not connect")
+                  (System/exit 0))
           (< 200 status) (println "URI invalid or no Host field in HTTP header")))
       (try
         (prompt @cns)
