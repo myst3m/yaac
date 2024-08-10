@@ -895,12 +895,11 @@
         org-id (org->id (or org *org*))
         env-id (env->id org-id (or env *env*))
         api-id (api->id org-id env-id api)]
-    
-    (if-not (and org env api)
+    (if-not (and org-id env-id api-id)
       (throw (e/invalid-arguments "Org, Env and API need to be specified" {:args args
                                                                            :availables {:org (map :name (-get-organizations))
                                                                                         :env (map :name (-get-environments org))}}))
-      (-get-api-contracts org env api))))
+      (-get-api-contracts org-id env-id api-id))))
 
 (defn contract->id [org env api contract]
   (->> (-get-api-contracts org env api)
