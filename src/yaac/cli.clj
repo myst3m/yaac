@@ -287,7 +287,8 @@
         (load-default-context!)
         (yc/load-session!)
         (binding [*org* (:organization default-context)
-                 *env* (:environment default-context)
+                  *env* (:environment default-context)
+                  *no-cache* (:no-cache options)
                   *deploy-target* (:deploy-target default-context)]
           (apply yaac.nrepl/cli (rest args)))
         (catch Exception e (print-error e)))

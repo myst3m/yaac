@@ -65,7 +65,7 @@
                                (not (:internal options)) (-> first :target :deployment-settings :http :inbound :public-url (str (.getPath app-uri)))
                                (:internal options) (-> first :target :deployment-settings :http :inbound :internal-url (str (.getPath app-uri))))
                              (str (.getHost app-uri))))
-                (throw (ex-info  "Need to give URI format as app://app-name/nrepl")))
+                (println "Need to give URI format as app://app-name/nrepl or https://app-host/nrepl"))
 
           ;; dst (or (-> appi :target :deployment-settings :http :inbound :public-url)
           ;;         (-> appi :target :deployment-settings :http :inbound :internal-url)
