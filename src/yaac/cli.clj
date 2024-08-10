@@ -274,14 +274,15 @@
       (log/set-min-level! :trace)
       (taoensso.timbre/merge-config!
        {:appenders {:println {:enabled? true  :ns-filter {:allow #{"*"} :deny #{"silvur.http"}}}}}))
-    
+
     (cond
-      (empty? arguments)
-      (println (main-usage summary))
+      (empty? (rest arguments))
+      (do
+        (println "No app url specified"))
 
       ;; nREPL
       (= (first args) "nrepl")
-      (apply yaac.nrepl/cli (rest args))
+      (apply yaac.nrepl/cli (rest arguments))
 
       ;; Platform API
       :else

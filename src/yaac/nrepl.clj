@@ -39,7 +39,7 @@
         scheme (.getScheme dst-uri)
         dst-uri (if scheme dst (str "https://" dst))
         host (.getHost (java.net.URI. dst-uri))]
-
+    
     (when-not dst
       (println (usage))
       (System/exit 0))
