@@ -59,7 +59,7 @@
         "  download  proxy ...                                      Download proxies as Jar file"
         "  config    context|credential|clear-cache ...             Configurate contexts"
         "  auth      azure                                          OAuth2 authorization code flow"
-        "  http                                                     Request HTTP to an application"
+        "  http      -                                              Request HTTP to an application"
         ""
         "Please refer to the manual page for more information."
         ""]
@@ -126,13 +126,17 @@
                           :default false]
                          ["-h" "--help" "This help"]])
 
-(defn print-error [e {:keys [output-format]}]
+(defn print-error [e & {:keys [output-format]}]
   (log/debug e)
   (let [{:keys [extra errors] :as exd} (ex-data e)]
-    (if-let [es (or (seq (map :extra errors)) [extra])] 
-      (do
-        (print (yc/default-format-by [:status :message] (or output-format :short) es {})))
-      (clojure.pprint/pprint (assoc (ex-data e) :message (or (ex-message e) "Unexpected error. Use -d option to investigte."))))))
+
+    (let [es (keep identity (or (seq (map :extra errors)) [extra]))] 
+      (if (seq es)
+        (print (yc/default-format-by [:status :message] (or output-format :short) es {}))
+        (do
+          (print (yc/default-format-by [:status :message] :short [(assoc (or (ex-data e) {}) :message (or (ex-message e) "Unexpected error. Use -d option to investigte."))] {})))
+        ;;(clojure.pprint/pprint (assoc (ex-data e) :message (or (ex-message e) "Unexpected error. Use -d option to investigte.")))
+        ))))
 
 (defn -cli [& a-args]
   (if-let [matched-route (or (r/match-by-path router (str/join "|" (map #(URLEncoder/encode %) a-args))) ;; URL endode for '%'
@@ -276,13 +280,17 @@
        {:appenders {:println {:enabled? true  :ns-filter {:allow #{"*"} :deny #{"silvur.http"}}}}}))
 
     (cond
-      (empty? (rest arguments))
-      (do
-        (println "No app url specified"))
 
       ;; nREPL
       (= (first args) "nrepl")
-      (apply yaac.nrepl/cli (rest arguments))
+      (try
+        (load-default-context!)
+        (yc/load-session!)
+        (binding [*org* (:organization default-context)
+                 *env* (:environment default-context)
+                  *deploy-target* (:deploy-target default-context)]
+          (apply yaac.nrepl/cli (rest args)))
+        (catch Exception e (print-error e)))
 
       ;; Platform API
       :else

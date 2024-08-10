@@ -16,7 +16,7 @@
              [http :as http]
              [log :as log]]
             [reitit.core :as r]
-            [yaac.core :refer [*org* *env* parse-response default-headers
+            [yaac.core :refer [*org* *env* *deploy-target* parse-response default-headers
                                add-extra-fields
                                org->id env->id app->id target->id
                                org->name load-session! -get-deployed-applications] :as yc]
@@ -104,7 +104,10 @@
                         3 args
                         (throw (e/invalid-arguments "Org and Env should be specified or use default context with yaac config command" {:args args})))
         ;; To specific app with target . ex t1ps/hello-app
-        [app target] (reverse (str/split app #"/"))]
+        target *deploy-target*
+        ;; [app target] (reverse (str/split app #"/"))
+        ]
+    
     (log/debug "describe-application" org env app target)
     (if-not (and org env app)
       (throw (e/invalid-arguments "Org, Env and App need to be specified" {:args args}))
