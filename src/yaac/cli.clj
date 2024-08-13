@@ -31,7 +31,12 @@
             [clojure.core.async :as async]
             [jansi-clj.core :as jansi]
             [yaac.auth :as auth]
-            [yaac.http :as yh]))
+            [yaac.http :as yh]
+            [malli.instrument :as mi]
+            [malli.core :as m]
+            [yaac.specs.nrepl]
+            [malli.error :as me]
+))
 
 (def version "0.6.0")
 
@@ -129,14 +134,27 @@
 (defn print-error [e & {:keys [output-format]}]
   (log/debug e)
   (let [{:keys [extra errors] :as exd} (ex-data e)]
-
     (let [es (keep identity (or (seq (map :extra errors)) [extra]))] 
       (if (seq es)
         (print (yc/default-format-by [:status :message] (or output-format :short) es {}))
-        (do
-          (print (yc/default-format-by [:status :message] :short [(assoc (or (ex-data e) {}) :message (or (ex-message e) "Unexpected error. Use -d option to investigte."))] {})))
-        ;;(clojure.pprint/pprint (assoc (ex-data e) :message (or (ex-message e) "Unexpected error. Use -d option to investigte.")))
-        ))))
+        (print (yc/default-format-by [:status :message] (or output-format :short) [(assoc (or (ex-data e) {}) :message (or (ex-message e) "Unexpected error. Use -d option to investigte."))] {})))
+      (flush))))
+
+(defn print-explain [e & {:keys [output-format]}]
+  (log/debug e)
+  (print (yc/default-format-by
+          [:status :message]
+          (or output-format :short)
+          (-> (m/explain (-> e ex-data :data :input) (-> e ex-data :data :args))
+              (me/humanize)
+              (->> (zipmap (-> e ex-data :data :args)))
+              (->> (filter #(some? (second %))))
+              (->> (map #(str (first %) " " (first (second %)))))
+              (->> (str/join ","))
+              (->> (hash-map :message)))
+          {}))
+  (flush))
+
 
 (defn -cli [& a-args]
   (if-let [matched-route (or (r/match-by-path router (str/join "|" (map #(URLEncoder/encode %) a-args))) ;; URL endode for '%'
@@ -260,6 +278,7 @@
     op-ch))
 
 
+
 (defn cli [& args]
   (let [{:keys [options arguments summary errors] :as command-context} (parse-opts
                                                                          (map name args) ;; To string
@@ -290,7 +309,9 @@
                   *env* (:environment default-context)
                   *no-cache* (:no-cache options)
                   *deploy-target* (:deploy-target default-context)]
+          (log/debug "default:" *org* *env*)
           (apply yaac.nrepl/cli (rest args)))
+        (catch clojure.lang.ExceptionInfo e (print-explain e))
         (catch Exception e (print-error e)))
 
       ;; Platform API
@@ -303,6 +324,7 @@
                   *no-cache* (:no-cache options)
                   *no-multi-thread* (:http-trace-detail options)
                   *console* (async/chan)]
+          (log/debug "default:" *org* *env*)
           (log/debug "Args: " args)
           ;; result is pushed to *console* channel
           (let [pch (if (:progress options)
@@ -325,5 +347,6 @@
         (catch Exception e (print-error e))))))
 
 (defn -main [& args]
+  (mi/instrument!)
   (apply cli args)
   (shutdown-agents))

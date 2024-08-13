@@ -237,7 +237,8 @@
         "  - user [org]                            Get users that belong to the organization"
         "  - connected-app                         Get connected applications"
         "  - runtime-target [org] [env]            Get runtime targets of RTF and CloudHub 2.0"
-        "  - policy [org] [env] api"
+        "  - standalone-gateway [org] [env]        Get Standalone Gateway as Flex Gateway"        
+        "  - policy [org] [env] api                Get Policies"               
         "  - entitlement                           Get entitilements for each runtime"
         "  - node-port [org]                       Get available node ports for apps using TCP"
         "                                          This function is required to be authenticated by 'Act as an user'"
@@ -586,6 +587,28 @@
           (add-extra-fields :org org :env env
                             :status #(get-in % [:application :status])
                             :target #(target->name org-id env-id (get-in % [:target :target-id])))))))
+
+
+(defn -get-standalone-gateways [org env]
+  (when (and org env)
+    (let [org-id (org->id org)
+          env-id (env->id org env)]
+      (-> (http/get (format "https://anypoint.mulesoft.com/standalone/api/v1/organizations/%s/environments/%s/gateways"  org-id env-id)
+                    {:headers (default-headers)})
+          (parse-response)
+          :body
+          :content
+          (add-extra-fields :org org :env env
+                            :replicas #(count (:replicas %)))))))
+
+(defn get-standalone-gateways [{[org env] :args :as args}]
+  (let [org (or org *org*)           ;; If specified, use it
+        env (or env *env*)]
+    (if-not (and org env)
+      (throw (e/invalid-arguments "Org and Env  need to be specified" {:args args}))
+      (-get-standalone-gateways org env))))
+
+
 
 (def -get-container-applications (memoize -get-container-applications))
 
@@ -1271,6 +1294,14 @@
     ["api-instance"]
     ["api-instance|{*args}"]]
 
+   ;; Standalone Gateways (Flex Gateway)
+   ["|" {:fields [:id [:extra :org] [:extra :env] :name :status [:extra :replicas]]
+         :handler get-standalone-gateways}
+    ["gw"]
+    ["gw|{*args}"]
+    ["standalone-gateway"]
+    ["standalone-gateway|{*args}"]]
+   
    ;; Get enttitlements
    ["|" {:handler get-entitlements
          ;;:fields
@@ -1325,3 +1356,8 @@
     ["policy|{*args}"]
     ["pol"]
     ["pol|{*args}"]]])
+
+
+
+
+;; https://anypoint.mulesoft.com/standalone/api/v1/organizations/fe1db8fb-8261-4b5c-a591-06fea582f980/environments/0d0debc2-8327-4e41-b5fb-7911421cc2c5/gateways?pageNumber=0&pageSize=20&name=&status=

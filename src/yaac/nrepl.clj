@@ -29,7 +29,15 @@
 (def nrepl-cli-options [["-i" "--internal" "Use internal URL"]
                         ["-h" "--help" "This help"]])
 
-(defn usage [summary-options]
+(defn usage 
+  {:malli/schema [:function
+                  [:=> [:cat [:* [:map-of :keyword :any]]] :string
+                   [:fn {:error/message "No !"}
+                   (fn [x] (prn x)(re-find x #"x"))]
+]
+                                    
+                  ]}
+  [summary-options]
   (->> ["Usage: nrepl [org] {env] <app> [options]"
         ""
         "Options:"
@@ -37,13 +45,25 @@
         summary-options]
        (str/join \newline)))
 
+
+(defn destination-url [org env app-uri & options]
+  (let [app-uri (java.net.URI. app-uri)]
+    (condp = (.getScheme app-uri)
+      "http"  (str app-uri)
+      "https" (str app-uri)
+      "app"  (do
+               (or (cond-> (yd/describe-application {:args [org env (.getHost app-uri)]})
+                     (not (:internal options)) (-> first :target :deployment-settings :http :inbound :public-url (str (.getPath app-uri)))
+                     (:internal options) (-> first :target :deployment-settings :http :inbound :internal-url (str (.getPath app-uri))))
+                   (str (.getHost app-uri))))
+      (println "Need to give URI format as app://app-name/nrepl or https://app-host/nrepl"))))
+
 (defn cli [& args]
   (log/debug args)
-
   (let [{:keys [options arguments summary errors] :as command-context} (parse-opts
                                                                         (map name args) ;; To string
                                                                         nrepl-cli-options)
-        [app-name env org] (reverse arguments)
+        [app-uri env org] (reverse arguments)
         env (or env *env*)
         org (or org *org*)]
 
@@ -53,19 +73,10 @@
       (println)
       (System/exit 0))
     
-    (when-not app-name
+    (when-not app-uri
       (throw (ex-info "No app specified" {})))
 
-    (let [app-uri (java.net.URI. app-name)
-          dst (condp = (.getScheme app-uri)
-                "http"  (str app-uri)
-                "https" (str app-uri)
-                "app"  (do
-                         (or (cond-> (yd/describe-application {:args [org env (.getHost app-uri)]})
-                               (not (:internal options)) (-> first :target :deployment-settings :http :inbound :public-url (str (.getPath app-uri)))
-                               (:internal options) (-> first :target :deployment-settings :http :inbound :internal-url (str (.getPath app-uri))))
-                             (str (.getHost app-uri))))
-                (println "Need to give URI format as app://app-name/nrepl or https://app-host/nrepl"))
+    (let [dst (destination-url org env app-uri)
 
           ;; dst (or (-> appi :target :deployment-settings :http :inbound :public-url)
           ;;         (-> appi :target :deployment-settings :http :inbound :internal-url)

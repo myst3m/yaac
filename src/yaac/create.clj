@@ -161,6 +161,8 @@
             upstream-uri (first uri) ;; it comes as array since '=' parameters
             dtype (deployment-targets (or (first deployment-type)
                                           (when *deploy-target* (keyword (first (str/split *deploy-target* #":"))))))
+            technology (first technology)
+            version version
             org-id (org->id org)
             env-id (env->id org-id env)
             group-id (org->id (or group org *org*))]
@@ -171,23 +173,31 @@
                         {:headers (assoc (default-headers)
                                          "X-ANYPNT-ORG-ID" org-id
                                          "X-ANYPNT-ENV-ID" env-id)
-                         :body (edn->json :camel {:technology (or technology "mule4"),
-                                                  :instance-label (or label asset)
-                                                  :spec {:group-id group-id,
-                                                         :asset-id asset,
-                                                         :version version}
-                                                  :endpoint {:tls-contexts nil,
-                                                             :response-timeout nil,
-                                                             :type "rest",
-                                                             :deployment-type dtype
-                                                             :references-user-domain false,
-                                                             :mule-version-4-or-above true,
-                                                             :proxy-uri proxy-uri,
-                                                             :uri upstream-uri,
-                                                             :validation "DISABLED",
-                                                             :proxy-template nil,
-                                                             :is-cloud-hub false}
-                                                  :endpoint-uri nil})
+                         :body (cond-> {:technology (or technology "mule4"),
+                                        :instance-label (or label asset)
+                                        :spec {:group-id group-id,
+                                               :asset-id asset,
+                                               :version version}
+                                        :endpoint {:tls-contexts nil,
+                                                   :response-timeout nil,
+                                                   :type "rest",
+                                                   :deployment-type dtype
+                                                   ;; :references-user-domain false,
+                                                   ;; :mule-version-4-or-above true,
+                                                   :proxy-uri proxy-uri,
+                                                   :uri upstream-uri,
+                                                   ;; :validation "DISABLED",
+                                                   ;; :proxy-template nil,
+                                                   :is-cloud-hub nil
+                                                   }
+                                        :endpoint-uri nil}
+                                 (= technology "mule4") (-> (assoc-in [:endpoint :mule-version-4-or-above] true)
+                                                            (assoc-in [:endpoint :references-user-domain] false)
+                                                            (assoc-in [:endpoint :is-cloud-hub] false)
+                                                            (assoc-in [:endpoint :proxy-template] nil)
+                                                            (assoc-in [:endpoint :validation] "DISABLED"))
+                                 (= technology "flexGateway") (-> (assoc-in [:endpoint :deployment-type] "HY"))
+                                 true (->> (edn->json :camel)))
                          })
              (parse-response)
              :body)))))
