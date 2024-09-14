@@ -634,6 +634,7 @@
     (:id r)))
 
 
+
 (defn -get-cloudhub20-privatespaces [org]
   (let [org-id (org->id org)]
     (if org-id
@@ -685,6 +686,12 @@
          (parse-response)
          :body
          :data)))
+
+(defn hybrid-server->id [org env cluster]
+  (let [[r] (->> (-get-servers org env)
+                 (filter #(or (= cluster (:name %))
+                              (= cluster (:id %)))))]
+    (:id r)))
 
 (defn get-servers [{[org env] :args}]
   (let [org (or org *org*)

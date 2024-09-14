@@ -1,5 +1,5 @@
 {:paths ["src" "resources"]
- :deps {org.clojure/clojure {:mvn/version "1.11.1"}
+ :deps {org.clojure/clojure {:mvn/version "1.12.0"}
         org.clojure/tools.cli {:mvn/version "1.0.206"}
         metosin/reitit {:mvn/version "0.7.0-alpha5"}
         org.fusesource.jansi/jansi {:mvn/version "2.4.0"}
@@ -12,6 +12,7 @@
         com.taoensso/nippy {:mvn/version "3.3.0-RC1"}
         com.owainlewis/salesforce {:mvn/version "1.0.2"}
         metosin/malli {:mvn/version "0.16.3"}
+        com.dylibso.chicory/runtime {:mvn/version "0.0.12"}
         com.github.seancorfield/honeysql {:mvn/version "2.6.1126"}
         com.github.seancorfield/next.jdbc {:mvn/version "1.3.939"}
         com.mysql/mysql-connector-j {:mvn/version "8.4.0"}

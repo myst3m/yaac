@@ -466,6 +466,7 @@
   (if-not (or (seq target) *deploy-target*)
     (throw (e/invalid-arguments "No target as target=rtf:k1 specified. Specify target option or configure default target by yaac config text." {:args args :target target}))
     (let [target (or (first target) *deploy-target*)
+          
           [runtime-target cluster] (str/split target #":")
           [org env api api-id] (case (count args)
                                  ;; deploy proxy my-api target=rtf:k1
@@ -473,9 +474,11 @@
                                  ;;  deploy proxy T1 Production my-api target=ch20:ap-northeasst
                                  3 [(first args) (second args) (last args) (yc/api->id (first args) (second args) (last args))]
                                  (throw (e/invalid-arguments "Org and Env should be specified or use default context with yaac config command" {:args args :target target})))
+
           [type target-type target-name target-id] (cond
                                                      (#{:rtf :runtime-fabric} (keyword runtime-target)) ["RF" "runtime-fabric" cluster (yc/rtf->id org cluster)]
                                                      (#{:ch20 :cloudhub2} (keyword runtime-target)) ["CH2" "shared-space" (csk/->HTTP-Header-Case cluster) cluster]
+                                                     (#{:hy :hybrid} (keyword runtime-target)) ["HY" "server" (str cluster) (str (yc/hybrid-server->id org env cluster))]
                                                      :else (throw (e/not-implemented "Not implemented" {:args args :target target})))]
       
       (if-not (and org env target-id)
@@ -488,11 +491,21 @@
                          (first))]
 
           (cond->> {:headers (default-headers)
-                    :body (edn->json :camel {:name app,
-                                             :type type,
-                                             :target
-                                             {:target-id target-id,
-                                              :deployment-settings {:runtime-version "4.4.0"}}})}
+                    :body (edn->json :camel
+                                     {:gateway-version "4.4.0"
+                                      :target-id target-id
+                                      :target-name target-type
+                                      :target-type "server"
+                                      :type type
+                                      :environment-id env-id
+                                      :environment-name (env->name org env)
+                                      }
+                                     ;; {:name app,
+                                     ;;  :type type,
+                                     ;;  :target
+                                     ;;  {:target-id target-id,
+                                     ;;   :deployment-settings {:runtime-version "4.4.0"}}}
+                                     )}
                
             (not proxy) (http/post (format "https://anypoint.mulesoft.com/proxies/xapi/v1/organizations/%s/environments/%s/apis/%s/deployments"
                                            org-id

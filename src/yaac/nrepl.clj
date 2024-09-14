@@ -8,7 +8,8 @@
             [camel-snake-kebab.core :as csk]
             [camel-snake-kebab.extras :as cske]
             [yaac.core :as yc :refer [*org* *env*]]
-            [yaac.describe :as yd]))
+            [yaac.describe :as yd]
+            [malli.instrument :as mi]))
 
 (defn usage []
   (->> ["Usage: nrepl <uri>"]
@@ -32,11 +33,10 @@
 (defn usage 
   {:malli/schema [:function
                   [:=> [:cat [:* [:map-of :keyword :any]]] :string
-                   [:fn {:error/message "No !"}
-                   (fn [x] (prn x)(re-find x #"x"))]
-]
-                                    
-                  ]}
+                  [:fn {:error/message "No !"}
+                   (fn [x] true)]]]
+   
+   }
   [summary-options]
   (->> ["Usage: nrepl [org] {env] <app> [options]"
         ""

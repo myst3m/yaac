@@ -1,6 +1,9 @@
 (ns yaac.cli
   (:gen-class)
   (:import [java.net URLEncoder])
+  (:import [com.dylibso.chicory.wasm.types Value]
+           [com.dylibso.chicory.wasm Parser]
+           [com.dylibso.chicory.runtime  Module ExportFunction Instance])
   (:require [yaac.core :as yc :refer [*org* *env* *deploy-target* *no-cache* *no-multi-thread* *console*]]
             [yaac.util :as util]
             [yaac.nrepl]
@@ -340,9 +343,7 @@
                 (when-not (= result :done)
                   (print result)
                   (flush)
-                  (recur ch))))
-            )
-          )
+                  (recur ch))))))
         (flush)
         (catch Exception e (print-error e))))))
 

@@ -131,7 +131,9 @@
   (-> {:rtf "RF"
        :runtime-fabric "RF"
        :ch20 "CH2"
-       :cloudhub2 "CH2"}
+       :cloudhub2 "CH2"
+       :hybrid "HY"
+       :hy "HY"}
       (get (some-> x csk/->kebab-case-keyword) "CH2")))
 
 ;; (defn create-transit-gateway [{:keys [args]
@@ -167,7 +169,7 @@
             env-id (env->id org-id env)
             group-id (org->id (or group org *org*))]
         
-      (log/debug "org:" org-id "env:" env-id "group:" group-id "deployment-type:" deployment-type)
+      (log/debug "org:" org-id "env:" env-id "group:" group-id "deployment-type:" dtype)
       
         (->> (http/post (format "https://anypoint.mulesoft.com/apimanager/api/v1/organizations/%s/environments/%s/apis" org-id env-id)
                         {:headers (assoc (default-headers)
