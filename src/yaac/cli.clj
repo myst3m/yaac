@@ -37,9 +37,7 @@
             [yaac.http :as yh]
             [malli.instrument :as mi]
             [malli.core :as m]
-            [yaac.specs.nrepl]
-            [malli.error :as me]
-))
+            [malli.error :as me]))
 
 (def version "0.6.0")
 
