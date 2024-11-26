@@ -4,13 +4,13 @@
              [http :as http]
              [log :as log]]
             [reitit.core :as r]
-            [yaac.core :refer [parse-response default-headers org->id load-session!] :as yc]
+            [yaac.core :refer [parse-response default-headers org->id load-session! gen-url] :as yc]
             [clojure.string :as str]
             [clojure.tools.cli :refer [parse-opts]]))
 
 ;;;
 (defn get-connected-apps [client-id]
-  (->> (http/get (format "https://anypoint.mulesoft.com/accounts/api/connectedApplications/%s" client-id)
+  (->> (http/get (format (gen-url "/accounts/api/connectedApplications/%s") client-id)
                   {:headers (default-headers)})
        (parse-response)))
 
@@ -18,7 +18,7 @@
 
 
 (defn create-connected-application []
-  (->> (http/post "https://anypoint.mulesoft.com/accounts/api/connectedApplications"
+  (->> (http/post (gen-url "/accounts/api/connectedApplications")
                   {:headers (default-headers)
                    :body (edn->json
                            {:scopes ["profile"],

@@ -1,5 +1,5 @@
 (ns yaac.logs
-  (:require [yaac.core :refer [org->id env->id *org* *env*] :as yc]
+  (:require [yaac.core :refer [org->id env->id *org* *env* gen-url] :as yc]
             [silvur.http :as http]
             [silvur.datetime :refer [datetime datetime* *precision* chrono-unit]]
             [clojure.string :as str]))
@@ -35,7 +35,7 @@
         env-id (env->id org-id env)
         [{spec-id :version extra :extra}] (yc/-get-container-application-specs org-id env-id app)
         {:keys [deployment-id]} extra]
-    (cond-> (http/get (format "https://anypoint.mulesoft.com/amc/application-manager/api/v2/organizations/%s/environments/%s/deployments/%s/specs/%s/logs"  org-id env-id deployment-id spec-id)
+    (cond-> (http/get (format (gen-url "/amc/application-manager/api/v2/organizations/%s/environments/%s/deployments/%s/specs/%s/logs")  org-id env-id deployment-id spec-id)
                   {:headers (yc/default-headers)
                    :query-params opts})
       true (yc/parse-response)

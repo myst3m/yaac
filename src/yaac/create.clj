@@ -17,7 +17,9 @@
              [log :as log]]
             [reitit.core :as r]
             [yaac.core :refer [*org* *env* *deploy-target*
-                               parse-response default-headers org->id ps->id env->id api->id app->id org->name load-session!] :as yc]
+                               parse-response default-headers
+                               org->id ps->id env->id api->id app->id org->name load-session!
+                               gen-url] :as yc]
             [yaac.error :as e]
             [clojure.string :as str]
             [clojure.tools.cli :refer [parse-opts]]
@@ -95,7 +97,7 @@
   (if-not (and org parent)
     (throw (e/invalid-arguments "Org and its parent org needs to be specified" :args args))
     (let [parent-org-id (org->id parent)]
-      (->> (http/post "https://anypoint.mulesoft.com/accounts/api/organizations"
+      (->> (http/post (gen-url "/accounts/api/organizations")
                        {:headers (default-headers)
                         :body (edn->json {:name org
                                           :ownerId (:id (:user (:body (yc/get-me ))))
@@ -115,7 +117,7 @@
     (throw (e/invalid-arguments "Org needs to be specified" :args args))
     (let [env-type (or (keyword (first type)) :sandbox)
           org-id (org->id org)]
-      (->> (http/post (format "https://anypoint.mulesoft.com/accounts/api/organizations/%s/environments" org-id )
+      (->> (http/post (format (gen-url "/accounts/api/organizations/%s/environments") org-id )
                        {:headers (default-headers)
                         :body (edn->json {:name env-name
                                           :isProduction (= env-type :production)
@@ -171,7 +173,7 @@
         
       (log/debug "org:" org-id "env:" env-id "group:" group-id "deployment-type:" dtype)
       
-        (->> (http/post (format "https://anypoint.mulesoft.com/apimanager/api/v1/organizations/%s/environments/%s/apis" org-id env-id)
+        (->> (http/post (format (gen-url "/apimanager/api/v1/organizations/%s/environments/%s/apis") org-id env-id)
                         {:headers (assoc (default-headers)
                                          "X-ANYPNT-ORG-ID" org-id
                                          "X-ANYPNT-ENV-ID" env-id)
@@ -235,7 +237,7 @@
       (< 1 (count policies) ) (throw (e/multiple-policies "Multiple policy found" {:extra policies}))
       :else
       (let [[{:keys [asset-id version]}] policies]
-        (-> (http/post (format "https://anypoint.mulesoft.com/apimanager/api/v1/organizations/%s/environments/%s/apis/%s/policies" org-id env-id api-id)
+        (-> (http/post (format (gen-url "/apimanager/api/v1/organizations/%s/environments/%s/apis/%s/policies") org-id env-id api-id)
                        {:headers (default-headers)
                         :body (edn->json {:api-version-id api-id
                                           :asset-id asset-id

@@ -4,7 +4,7 @@
   (:import [com.dylibso.chicory.wasm.types Value]
            [com.dylibso.chicory.wasm Parser]
            [com.dylibso.chicory.runtime  Module ExportFunction Instance])
-  (:require [yaac.core :as yc :refer [*org* *env* *deploy-target* *no-cache* *no-multi-thread* *console*]]
+  (:require [yaac.core :as yc :refer [*org* *env* *deploy-target* *no-cache* *no-multi-thread* *console* global-base-url]]
             [yaac.util :as util]
             [yaac.nrepl]
             [reitit.core :as r]
@@ -39,7 +39,7 @@
             [malli.core :as m]
             [malli.error :as me]))
 
-(def version "0.6.0")
+(def version "0.7.0")
 
 ;;; main
 
@@ -122,6 +122,8 @@
                           :default false]
                          ["-d" "--debug" "See debug log"
                           :default false]
+                         ["-U" "--base-url <url>" "Base URL."
+                          :default "https://anypoint.mulesoft.com"]
                          ["-P" "--progress" "Display progress"
                           :default false]
                          ["-V" "--http-trace" "Show HTTP request and response flow"
@@ -131,6 +133,7 @@
                          ["-Z" "--no-cache" "Not using cache"
                           :default false]
                          ["-h" "--help" "This help"]])
+
 
 (defn print-error [e & {:keys [output-format]}]
   (log/debug e)
@@ -292,12 +295,14 @@
 
     (when (:http-trace-detail options)
       (set-http-tracing-mode! 1))
-
     
+    (yc/set-global-base-url (:base-url options))
+
     (when (:debug options)
       (log/set-min-level! :trace)
       (taoensso.timbre/merge-config!
        {:appenders {:println {:enabled? true  :ns-filter {:allow #{"*"} :deny #{"silvur.http"}}}}}))
+
 
     (cond
 

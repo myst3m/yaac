@@ -21,7 +21,10 @@
             [reitit.http.interceptors.parameters :as interceptor]
             [org.httpkit.server :refer [run-server]]
             [reitit.core :as r]
-            [yaac.core :refer [parse-response default-headers org->id env->id org->name load-session! parse-response set-session!] :as yc]
+            [yaac.core :refer [parse-response
+                               default-headers
+                               org->id env->id org->name load-session! parse-response set-session!
+                               gen-url] :as yc]
             [yaac.config :as conf]
             [yaac.error :as e]
             [clojure.string :as str]
@@ -75,14 +78,13 @@
 ;;     (println (login-usage summary))))
 
 
-
 ;;; login
 
-(defmulti -login (fn [auth-method & {:keys [username password client-id cilent-secret]}] (keyword auth-method)))
+(defmulti -login (fn [auth-method & {:keys [username password client-id cilent-secret base-url]}] (keyword auth-method)))
 
 ;; This is deprecated because MFA is mandatory used. If MFA is exemplted, it can be used as of 2023/8/28
-(defmethod -login :user [_ & {:keys [username password]}]
-  (->> (http/post "https://anypoint.mulesoft.com/accounts/login"
+(defmethod -login :user [_ & {:keys [username password base-url] :as cm}]
+  (->> (http/post (gen-url "/accounts/login")
                    {:form-params {:username username
                                   :password password}})
        ;; This API should be responded as json string "\"unauthorized\""  , but respond string "unauthorized" on error.
@@ -96,7 +98,7 @@
         :body (edn->json :snake {:client-id client-id
                                  :client-secret client-secret
                                  :grant-type "client_credentials"})}
-       (http/post "https://anypoint.mulesoft.com/accounts/api/v2/oauth2/token")
+       (http/post (gen-url "/accounts/api/v2/oauth2/token"))
        (parse-response)
        :body
        (set-session!)))
@@ -104,7 +106,7 @@
 
 
 (defmethod -login :password [_ & {:keys [username password client-id client-secret scope]}]
-  (->> (http/post "https://anypoint.mulesoft.com/accounts/api/v2/oauth2/token"
+  (->> (http/post (gen-url "/accounts/api/v2/oauth2/token")
                    {:headers {"Content-Type" "application/json"}
                     :body (edn->json :snake {:client-id client-id
                                              :client-secret client-secret
@@ -123,7 +125,7 @@
             (let [done? (atom false)]
               (fn [{:keys [params] :as req}]
                 (if-not @done?
-                  (-> (http/post "https://anypoint.mulesoft.com/accounts/api/v2/oauth2/token"
+                  (-> (http/post (gen-url "/accounts/api/v2/oauth2/token")
                                  {:headers {"Content-Type" "application/json"}
                                   :body (edn->json :snake {:code (params "code")
                                                            :redirect-uri "http://localhost:9180"
@@ -151,7 +153,7 @@
   (println)
   (println "This software starts to listen on 9180/tcp and handles the redirected request to http://localhost:9180 by the browser.")
   (println)
-  (println (format "https://anypoint.mulesoft.com/accounts/api/v2/oauth2/authorize?client_id=%s&scope=%s&response_type=code&redirect_uri=http://localhost:9180&nonce=%s"
+  (println (format (gen-url "/accounts/api/v2/oauth2/authorize?client_id=%s&scope=%s&response_type=code&redirect_uri=http://localhost:9180&nonce=%s")
                    client-id
                    (or scope "read:full")
                    (rand-int 99999)))
@@ -167,36 +169,35 @@
   (throw (e/auth-method-not-supported "Auth method not supported yet" :method auth-method)))
 
 
-
 (defn login [{:keys [args] :as om}]
   (log/debug "Args:" args)
   (conf/clear-cache)
-  (let [cm (cond 
-             (= 1 (count args))
-             (let [[connected-app] args
-                   con (System/console)
-                   {:keys [grant-type username password] :as ctx} (yc/load-credentials connected-app)]
-               (if (= "password" grant-type)
-                 (let [u (or username (.readLine con "%s" (into-array ["username: "])))
-                       p (or password (.readPassword con "%s" (into-array ["password: "])))]
-                   (assoc ctx :username u :password p))
-                 ctx))
-             (= 2 (count args))
-             (let [[user password] args]
-               {:username user :password password :grant-type :user})
-             (<= 3 (count args))
-             (let [[connected-app user password] args
-                   {:keys [grant-type client-id client-secret scope] :as ctx} (yc/load-credentials connected-app)]
-               {:username user :password password
-                :grant-type grant-type
-                :scope scope
-                :client-id client-id
-                :client-secret client-secret}))]
+  (let [credential (cond 
+                     (= 1 (count args))
+                     (let [[connected-app] args
+                           con (System/console)
+                           {:keys [grant-type username password] :as ctx} (yc/load-credentials connected-app)]
+                       (if (= "password" grant-type)
+                         (let [u (or username (.readLine con "%s" (into-array ["username: "])))
+                               p (or password (.readPassword con "%s" (into-array ["password: "])))]
+                           (assoc ctx :username u :password p))
+                         ctx))
+                     (= 2 (count args))
+                     (let [[user password] args]
+                       {:username user :password password :grant-type :user})
+                     (<= 3 (count args))
+                     (let [[connected-app user password] args
+                           {:keys [grant-type client-id client-secret scope] :as ctx} (yc/load-credentials connected-app)]
+                       {:username user :password password
+                        :grant-type grant-type
+                        :scope scope
+                        :client-id client-id
+                        :client-secret client-secret}))]
     
-    (log/debug "Use context:" cm)
-    (if cm
+    (log/debug "Use context:" credential)
+    (if credential
       (do
-        (-> (-login (csk/->kebab-case-keyword (:grant-type cm)) cm)
+        (-> (-login (csk/->kebab-case-keyword (:grant-type credential)) (merge om credential))
             (yc/store-session!)
             (dissoc :id-token)))
       (throw (e/invalid-credentials "Connected app or user/password required" {:args args})))))

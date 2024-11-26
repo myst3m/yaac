@@ -16,7 +16,10 @@
              [http :as http]
              [log :as log]]
             [reitit.core :as r]
-            [yaac.core :refer [*org* *env* *deploy-target* *no-multi-thread* parse-response default-headers org->id env->id org->name target->id target->name load-session! env->name] :as yc]
+            [yaac.core :refer [*org* *env* *deploy-target* *no-multi-thread*
+                               parse-response default-headers
+                               org->id env->id org->name target->id target->name load-session! env->name
+                               gen-url] :as yc]
             [camel-snake-kebab.core :as csk]
             [yaac.error :as e]
             [clojure.string :as str]
@@ -183,11 +186,11 @@
                       [deployed-app] (filter #(= target-app-name (:name %)) deployed-apps)
 
                       [http-fn url] (if (seq deployed-app)
-                                      [http/patch (format "https://anypoint.mulesoft.com/amc/application-manager/api/v2/organizations/%s/environments/%s/deployments/%s"
+                                      [http/patch (format (gen-url "/amc/application-manager/api/v2/organizations/%s/environments/%s/deployments/%s")
                                                           target-org-id
                                                           target-env-id
                                                           (:id deployed-app))]
-                                      [http/post (format "https://anypoint.mulesoft.com/amc/application-manager/api/v2/organizations/%s/environments/%s/deployments" target-org-id target-env-id)])]
+                                      [http/post (format (gen-url "/amc/application-manager/api/v2/organizations/%s/environments/%s/deployments") target-org-id target-env-id)])]
 
                   (log/debug "Deploy URL:" url)
 
@@ -264,11 +267,11 @@
                                         (first))
                       
                       [http-fn url] (if (seq deployed-app)
-                                      [http/patch (format "https://anypoint.mulesoft.com/amc/application-manager/api/v2/organizations/%s/environments/%s/deployments/%s"
+                                      [http/patch (format (gen-url "/amc/application-manager/api/v2/organizations/%s/environments/%s/deployments/%s")
                                                           target-org-id
                                                           target-env-id
                                                           (:id deployed-app))]
-                                      [http/post (format "https://anypoint.mulesoft.com/amc/application-manager/api/v2/organizations/%s/environments/%s/deployments" target-org-id target-env-id)])
+                                      [http/post (format (gen-url "/amc/application-manager/api/v2/organizations/%s/environments/%s/deployments") target-org-id target-env-id)])
                       [node-port] node-port
                       [target-port] target-port
                       [runtime-version] runtime-version]
@@ -365,7 +368,7 @@
                                          many-deploys? (str/join "-" (filter (comp not empty?) [app-or-prefix a]))
                                          (seq app-or-prefix) app-or-prefix
                                          :else a)]
-                   (-> (http/post "https://anypoint.mulesoft.com/hybrid/api/v1/applications"
+                   (-> (http/post (gen-url "/hybrid/api/v1/applications")
                                   {:headers (assoc (default-headers)
                                                    "X-ANYPNT-ORG-ID" org-id
                                                    "X-ANYPNT-ENV-ID" env-id)
@@ -507,11 +510,11 @@
                                      ;;   :deployment-settings {:runtime-version "4.4.0"}}}
                                      )}
                
-            (not proxy) (http/post (format "https://anypoint.mulesoft.com/proxies/xapi/v1/organizations/%s/environments/%s/apis/%s/deployments"
+            (not proxy) (http/post (format (gen-url "/proxies/xapi/v1/organizations/%s/environments/%s/apis/%s/deployments")
                                            org-id
                                            env-id
                                            api-id))
-            (some? proxy) (http/patch (format "https://anypoint.mulesoft.com/proxies/xapi/v1/organizations/%s/environments/%s/apis/%s/deployments/%s"
+            (some? proxy) (http/patch (format (gen-url "/proxies/xapi/v1/organizations/%s/environments/%s/apis/%s/deployments/%s")
                                               org-id
                                               env-id
                                               api-id

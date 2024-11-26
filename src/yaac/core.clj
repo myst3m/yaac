@@ -46,12 +46,19 @@
 (def ^:dynamic *no-multi-thread*)
 (def ^:dynamic *console*)
 (def mule-business-group-id "68ef9520-24e9-4cf2-b2f5-620025690913")
+(def global-base-url "https://anypoint.mulesoft.com")
 
 (defmacro try-wrap [& body]
   `(try
      ~@body
      (catch Exception e# )))
 
+(defn set-global-base-url [url]
+  (->> (condp = url
+         "hyperforce" "https://jp1.platform.mulesoft.com"
+         "https://anypoint.mulesoft.com")
+       (constantly)
+       (alter-var-root #'global-base-url)))
 
 
 (defn memoize-file [f]
@@ -88,6 +95,11 @@
              (throw (ex-info "Errors in threads" (e/multi-errors errs#))))
            results#))
        (<!! (go (concat ~@body))))))
+
+
+
+(defn gen-url [& url-paths]
+  (str/join (map (fn [x] (if (re-find #"/$" x) (subs x 0 (dec (count x))) x)) (cons global-base-url url-paths))))
 
 
 (defn slurp-pom-file [jar-path]
@@ -174,7 +186,7 @@
 
 
 (defn -get-me []
-  (-> (http/get "https://anypoint.mulesoft.com/accounts/api/me"
+  (-> (http/get (gen-url "/accounts/api/me")
                  {:headers (default-headers)})
       (parse-response)))
 
@@ -298,7 +310,7 @@
 (defn- -get-environments [org]
   (let [org-id (and org (:id (first (filter #(= (name org) (:name %)) (-get-organizations)) )))]
     (if org-id
-      (-> (http/get (format "https://anypoint.mulesoft.com/accounts/api/organizations/%s/environments"
+      (-> (http/get (format (gen-url "/accounts/api/organizations/%s/environments")
                              org-id)
                      {:headers (default-headers)})
           (parse-response)
@@ -438,7 +450,7 @@
   ;; 2. asset  : query 1 asset for each version mainly -> response is in [:asset :other-version]
   
   (if-let [gql (map->graphql query-map)]
-    (-> (http/post "https://anypoint.mulesoft.com/graph/api/v2/graphql"
+    (-> (http/post (gen-url "/graph/api/v2/graphql")
                     {:headers (default-headers)
                      :body (edn->json {:query gql
                                        :variables {:accessToken (:access-token default-credential)}})})
@@ -579,7 +591,7 @@
   (when (and org env)
     (let [org-id (org->id org)
           env-id (env->id org env)]
-      (-> (http/get (format "https://anypoint.mulesoft.com/amc/application-manager/api/v2/organizations/%s/environments/%s/deployments"  org-id env-id)
+      (-> (http/get (format (gen-url "/amc/application-manager/api/v2/organizations/%s/environments/%s/deployments")  org-id env-id)
                     {:headers (default-headers)})
           (parse-response)
           :body
@@ -593,7 +605,7 @@
   (when (and org env)
     (let [org-id (org->id org)
           env-id (env->id org env)]
-      (-> (http/get (format "https://anypoint.mulesoft.com/standalone/api/v1/organizations/%s/environments/%s/gateways"  org-id env-id)
+      (-> (http/get (format (gen-url "/standalone/api/v1/organizations/%s/environments/%s/gateways")  org-id env-id)
                     {:headers (default-headers)})
           (parse-response)
           :body
@@ -616,7 +628,7 @@
   (let [org (or org *org*)
         org-id (org->id org)]
     (if org-id
-      (->> (http/get (format "https://anypoint.mulesoft.com/runtimefabric/api/organizations/%s/fabrics/" org-id)
+      (->> (http/get (format (gen-url "/runtimefabric/api/organizations/%s/fabrics/") org-id)
                      {:headers (default-headers)})
            (parse-response)
            :body)
@@ -638,7 +650,7 @@
 (defn -get-cloudhub20-privatespaces [org]
   (let [org-id (org->id org)]
     (if org-id
-      (->> (http/get (format "https://anypoint.mulesoft.com/runtimefabric/api/organizations/%s/privatespaces" org-id)
+      (->> (http/get (format (gen-url "/runtimefabric/api/organizations/%s/privatespaces") org-id)
                      {:headers (default-headers)})
            (parse-response)
            :body
@@ -653,7 +665,7 @@
   ([org env]
    (let [org-id (org->id org)
          env-id (env->id org env)]
-     (->> (http/get (format "https://anypoint.mulesoft.com/apimanager/api/v1/organizations/%s/environments/%s/apis" org-id env-id)
+     (->> (http/get (format (gen-url "/apimanager/api/v1/organizations/%s/environments/%s/apis") org-id env-id)
                     {:headers (default-headers)})
           (parse-response)
           :body
@@ -682,7 +694,7 @@
     (->> {:headers (assoc (default-headers)
                           "X-ANYPNT-ORG-ID" org-id
                           "X-ANYPNT-ENV-ID" env-id)}
-         (http/get "https://anypoint.mulesoft.com/hybrid/api/v1/servers")
+         (http/get (gen-url "/hybrid/api/v1/servers"))
          (parse-response)
          :body
          :data)))
@@ -702,7 +714,7 @@
 ;; This function is required be authenticated by 'Act as an user'
   (let [org-id (org->id org-sym)]
     (if org-id
-      (->> (http/get (format "https://anypoint.mulesoft.com/runtimefabric/api/organizations/%s/targets" org-id)
+      (->> (http/get (format (gen-url "/runtimefabric/api/organizations/%s/targets") org-id)
                       {:headers (default-headers)})
            (parse-response)
            :body
@@ -783,7 +795,7 @@
 (defn get-user [{[org] :args}]
   (let [org (or org *org*)
         org-id (org->id org)]
-    (->> (http/get (format "https://anypoint.mulesoft.com/accounts/api/organizations/%s/users" org-id)
+    (->> (http/get (format (gen-url "/accounts/api/organizations/%s/users") org-id)
                     {:headers (default-headers)})
          (parse-response)
          :body
@@ -824,7 +836,7 @@
 
 
 (defn get-connected-applications [_]
-  (->> (http/get "https://anypoint.mulesoft.com/accounts/api/connectedApplications"
+  (->> (http/get (gen-url "/accounts/api/connectedApplications")
                    {:headers (default-headers)})
        (parse-response)
        :body
@@ -835,7 +847,7 @@
   (let [org-id (org->id org)
         env-id (env->id org env)
         api-id (yc/api->id org env api)]
-    (-> (http/get (format "https://anypoint.mulesoft.com/proxies/xapi/v1/organizations/%s/environments/%s/apis/%s/deployments" org-id env-id api-id)
+    (-> (http/get (format (gen-url "/proxies/xapi/v1/organizations/%s/environments/%s/apis/%s/deployments") org-id env-id api-id)
                   {:headers (default-headers)})
         (parse-response)
         :body)))
@@ -854,7 +866,7 @@
         env-id (env->id org env)]
     (log/debug "org:" org-id)
     (log/debug "env:" env-id)
-    (-> (http/get "https://anypoint.mulesoft.com/hybrid/api/v1/applications"
+    (-> (http/get (gen-url "/hybrid/api/v1/applications")
                   {:headers (assoc (default-headers)
                                    "X-ANYPNT-ORG-ID" org-id
                                    "X-ANYPNT-ENV-ID" env-id)})
@@ -912,7 +924,7 @@
   (let [org-id (org->id org)
         env-id (env->id org-id env)
         api-id (yc/api->id org env api)]
-    (-> (http/get (format "https://anypoint.mulesoft.com/apimanager/api/v1/organizations/%s/environments/%s/apis/%s/contracts" org-id env-id api-id)
+    (-> (http/get (format (gen-url "/apimanager/api/v1/organizations/%s/environments/%s/apis/%s/contracts") org-id env-id api-id)
                   {:headers (default-headers)})
         (parse-response)
         :body
@@ -998,7 +1010,7 @@
   (let [org-id (org->id (or org *org*))
         env-id (env->id org-id (or env *env*))
         [{deployment-id :id}] (filter #(#{(:id %) (:name %)} app) (-get-container-applications org env))]
-    (-> (http/get (format "https://anypoint.mulesoft.com/amc/application-manager/api/v2/organizations/%s/environments/%s/deployments/%s/specs"  org-id env-id deployment-id)
+    (-> (http/get (format (gen-url "/amc/application-manager/api/v2/organizations/%s/environments/%s/deployments/%s/specs")  org-id env-id deployment-id)
                   {:headers (default-headers)})
         (parse-response)
         :body
@@ -1023,7 +1035,7 @@
   {:post [(s/valid? :entitlement/view (map :extra %))]}
   (let [orgs (-get-organizations)
         xf #(try
-              (->> (http/get (format "https://anypoint.mulesoft.com/accounts/api/organizations/%s" (:id %))
+              (->> (http/get (format (gen-url "/accounts/api/organizations/%s") (:id %))
                              {:headers (default-headers)})
                    (parse-response)
                    :body)
@@ -1048,7 +1060,7 @@
   (let [org-id (org->id org)
         ps (-get-cloudhub20-privatespaces org-id)
         xf #(try
-              (-> (http/get (format "https://anypoint.mulesoft.com/runtimefabric/api/organizations/%s/privatespaces/%s/ports" org-id (:id %))
+              (-> (http/get (format (gen-url "/runtimefabric/api/organizations/%s/privatespaces/%s/ports") org-id (:id %))
                             {:headers (default-headers)
                              :query-params {:available true :count 10}})
                   (parse-response)
@@ -1083,7 +1095,7 @@
 (defn get-transit-gateways [{:keys [args]  [org ps] :args}]
   (let [org-id (org->id (or org *org*))
         ps-id (ps->id org-id ps)]
-    (-> (http/get (format "https://anypoint.mulesoft.com/runtimefabric/api/organizations/%s/privatespaces/%s/transitgateways" org-id ps-id)
+    (-> (http/get (format (gen-url "/runtimefabric/api/organizations/%s/privatespaces/%s/transitgateways") org-id ps-id)
                   {:headers (default-headers)})
         (parse-response)
         :body)))
@@ -1091,7 +1103,7 @@
 (defn -get-cloudhub20-vpns [org ps]
   (let [org-id (org->id (or org *org*))
         ps-id (ps->id org-id ps)]
-    (-> (http/get (format "https://anypoint.mulesoft.com/runtimefabric/api/organizations/%s/privatespaces/%s/connections" org-id ps-id)
+    (-> (http/get (format (gen-url "/runtimefabric/api/organizations/%s/privatespaces/%s/connections") org-id ps-id)
                    {:headers (default-headers)})
          (parse-response)
          :body
@@ -1108,7 +1120,7 @@
 (defn -get-cloudhub20-transit-gateways [org ps]
   (let [org-id (org->id (or org *org*))
         ps-id (ps->id org-id ps)]
-    (-> (http/get (format "https://anypoint.mulesoft.com/runtimefabric/api/organizations/%s/privatespaces/%s/transitgateways" org-id ps-id)
+    (-> (http/get (format (gen-url "/runtimefabric/api/organizations/%s/privatespaces/%s/transitgateways") org-id ps-id)
                    {:headers (default-headers)})
         (parse-response)
          :body
@@ -1141,7 +1153,7 @@
   (let [org-id (org->id (or org *org*))
         env-id (env->id org-id (or env *env*))
         api-id (api->id org-id env-id api)]
-    (-> (http/get (format "https://anypoint.mulesoft.com/apimanager/api/v1/organizations/%s/environments/%s/apis/%s/policies"
+    (-> (http/get (format (gen-url "/apimanager/api/v1/organizations/%s/environments/%s/apis/%s/policies")
                           org-id env-id api-id)
                   {:headers (default-headers)})
         (parse-response)
@@ -1156,7 +1168,7 @@
 (defn -get-automated-api-policies [org env]
   (let [org-id (org->id (or org *org*))
         env-id (env->id org-id (or env *env*))]
-    (-> (http/get (format "https://anypoint.mulesoft.com/apimanager/api/v1/organizations/%s/automated-policies"
+    (-> (http/get (format (gen-url "/apimanager/api/v1/organizations/%s/automated-policies")
                           org-id env-id)
                   {:query-params {:environmentId env-id}
                    :headers (default-headers)})
@@ -1183,6 +1195,7 @@
   (let [org-id (org->id org)
         env-id (env->id org env)
         etype (keyword entity-type)]
+    (log/warn "Monitoring URL should be fixed for hyperforce.")
     (-> (http/get (format "https://monitoring.anypoint.mulesoft.com/monitoring/archive/api/v1/organizations/%s/environments/%s/%s"
                           org env entity-type)
                   {:headers (default-headers)})

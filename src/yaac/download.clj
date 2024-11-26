@@ -35,7 +35,7 @@
             [clojure.set :as set]
             [clj-yaml.core :as yaml]
             [clojure.core.async :as async]
-            [yaac.core :refer [*org* *env* org->id env->id api->id parse-response default-headers] :as yc]))
+            [yaac.core :refer [*org* *env* org->id env->id api->id parse-response default-headers gen-url] :as yc]))
 
 
 (defn usage [summary-options]
@@ -70,7 +70,7 @@
       (throw (e/invalid-arguments "Org, Env and Api need to be specified" {:args args}))
       (let [org-id (org->id org)
             env-id (env->id org env)]
-        (-> (http/get (format "https://anypoint.mulesoft.com/proxies/xapi/v1/organizations/%s/environments/%s/apis/%s/proxy" org-id env-id api-id)
+        (-> (http/get (format (gen-url "/proxies/xapi/v1/organizations/%s/environments/%s/apis/%s/proxy") org-id env-id api-id)
                          {:headers (default-headers)})
             (parse-response)
             ;; body is ByteInputStream

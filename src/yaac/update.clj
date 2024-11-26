@@ -16,7 +16,7 @@
              [http :as http]
              [log :as log]]
             [reitit.core :as r]
-            [yaac.core :refer [*org* *env* parse-response default-headers org->id env->id api->id org->name ps->id conn->id load-session!] :as yc]
+            [yaac.core :refer [*org* *env* parse-response default-headers org->id env->id api->id org->name ps->id conn->id load-session! gen-url] :as yc]
             [yaac.error :as e]
             [clojure.string :as str]
             [clojure.tools.cli :refer [parse-opts]]
@@ -87,7 +87,7 @@
   (if-not (and group asset version)
     (throw (e/invalid-arguments "Group, asset and version are required" {:group group :asset asset}))
     (let [group-id (org->id group)
-          url (format "https://anypoint.mulesoft.com/exchange/api/v2/organizations/%s/assets/%s/%s/%s/mutabledata" group-id group-id asset version)
+          url (format (gen-url "/exchange/api/v2/organizations/%s/assets/%s/%s/%s/mutabledata") group-id group-id asset version)
           multipart [{:name "tags" :content (str/join "," labels)}]]
       (-> (http/patch url {:headers (yc/multipart-headers)
                            :multipart multipart})
@@ -103,7 +103,7 @@
       (let [org-id (org->id org)
             env-id (env->id org env)
             api-id (api->id org env api)]
-        (-> (http/patch (format "https://anypoint.mulesoft.com/apimanager/api/v1/organizations/%s/environments/%s/apis/%s" org-id env-id api-id)
+        (-> (http/patch (format (gen-url "/apimanager/api/v1/organizations/%s/environments/%s/apis/%s") org-id env-id api-id)
                         {:headers (yc/default-headers)
                          :body (edn->json :camel {:asset-version asset-version})})
             (parse-response)
@@ -124,7 +124,7 @@
                      (cond
                        (= "SERVER" (-> app :target :type))
                        (do
-                         (-> "https://anypoint.mulesoft.com/hybrid/api/v1/applications/%s"
+                         (-> (gen-url "/hybrid/api/v1/applications/%s")
                              (format (:id app))
                              (http/patch {:headers (assoc (default-headers)
                                                           "X-ANYPNT-ORG-ID" target-org-id
@@ -142,7 +142,7 @@
                        
                        (= "MC" (-> app :target :provider))
                        (do
-                         (-> "https://anypoint.mulesoft.com/amc/application-manager/api/v2/organizations/%s/environments/%s/deployments/%s"
+                         (-> (gen-url "/amc/application-manager/api/v2/organizations/%s/environments/%s/deployments/%s")
                              (format target-org-id target-env-id (:id app))
                              (http/patch {:headers (yc/default-headers)
                                           :body (edn->json (cond-> {}
@@ -169,7 +169,7 @@
                static-ips (assoc-in [:entitlements :static-ips :assigned] (parse-long (first static-ips)))
                network-connections (assoc-in [:entitlements :network-connections :assigned] (parse-long (first network-connections)))
                vpns (assoc-in [:entitlements :vpns :assigned] (parse-long (first vpns))))]
-    (->> (http/put (format "https://anypoint.mulesoft.com/accounts/api/organizations/%s" org-id)
+    (->> (http/put (format (gen-url "/accounts/api/organizations/%s") org-id)
                    {:headers (default-headers)
                     :body (edn->json body)})
          (parse-response)
@@ -197,7 +197,7 @@
 
     (condp = (keyword type)
       :vpn (-> (http/patch
-                (format "https://anypoint.mulesoft.com/runtimefabric/api/organizations/%s/privatespaces/%s/connections/%s" org-id ps-id id)
+                (format (gen-url "/runtimefabric/api/organizations/%s/privatespaces/%s/connections/%s") org-id ps-id id)
                 {:headers (default-headers)
                  :body (edn->json :camel {:id id
                                           :name name
@@ -211,7 +211,7 @@
                                     :type type
                                     :routes (fn [x] (->> x :static-routes (str/join ",")))))
       :tgw (-> (http/patch
-                (format "https://anypoint.mulesoft.com/runtimefabric/api/organizations/%s/privatespaces/%s/transitgateways/%s" org-id ps-id id)
+                (format (gen-url "/runtimefabric/api/organizations/%s/privatespaces/%s/transitgateways/%s") org-id ps-id id)
                 {:headers (default-headers)
                  :body (edn->json :camel {:routes merged-routes})})
                (parse-response)

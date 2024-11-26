@@ -23,7 +23,8 @@
                                app->id
                                org->name
                                env->name
-                               load-session!] :as yc]
+                               load-session!
+                               gen-url] :as yc]
             [yaac.error :as e]
             [clojure.string :as str]
             [clojure.tools.cli :refer [parse-opts]]
@@ -87,7 +88,7 @@
   (let [org-id (org->id org)
         env-id (env->id org env)
         app-id (:id appi)]
-    (-> (http/delete (format "https://anypoint.mulesoft.com/amc/application-manager/api/v2/organizations/%s/environments/%s/deployments/%s" org-id env-id app-id)
+    (-> (http/delete (format (gen-url "/amc/application-manager/api/v2/organizations/%s/environments/%s/deployments/%s") org-id env-id app-id)
                      {:headers (default-headers)})
         (parse-response)
         ;; body is nil on HTTP 204
@@ -99,7 +100,7 @@
   (let [org-id (org->id org)
         env-id (env->id org env)
         app-id (:id appi)]
-    (-> (http/delete (format "https://anypoint.mulesoft.com/hybrid/api/v1/applications/%s" app-id)
+    (-> (http/delete (format (gen-url "/hybrid/api/v1/applications/%s") app-id)
                      {:headers (assoc (default-headers)
                                       "X-ANYPNT-ORG-ID" org-id
                                       "X-ANYPNT-ENV-ID" env-id)})
@@ -155,7 +156,7 @@
                  [version])]
         (reduce (fn [r v]
                   (-> (http/delete
-                        (format "https://anypoint.mulesoft.com/exchange/api/v2/assets/%s/%s/%s" group-id artifact-id v)
+                       (format (gen-url "/exchange/api/v2/assets/%s/%s/%s") group-id artifact-id v)
                         ;;Hard delete via API is forbidden
                         {:headers (conj (default-headers) {"x-delete-type" (if hard-delete "hard-delete" "soft-delete")})})
                       (parse-response)
@@ -172,7 +173,7 @@
   (if-not org
     (throw (e/invalid-arguments "Org not specified" :args args))
     (let [org-id (org->id org)]
-      (->> (http/delete (format "https://anypoint.mulesoft.com/accounts/api/organizations/%s" org-id)
+      (->> (http/delete (format (gen-url "/accounts/api/organizations/%s") org-id)
                          {:headers (default-headers)})
            (parse-response)))))
 
@@ -187,7 +188,7 @@
       (throw (e/invalid-arguments "Org, Env and Api need to be specified" {:args args}))
       (let [org-id (org->id org)
             env-id (env->id org env)]
-        (-> (http/delete (format "https://anypoint.mulesoft.com/apimanager/api/v1/organizations/%s/environments/%s/apis/%s" org-id env-id api-id)
+        (-> (http/delete (format (gen-url "/apimanager/api/v1/organizations/%s/environments/%s/apis/%s") org-id env-id api-id)
                          {:headers (default-headers)})
             (parse-response)
             ;; body is nil on HTTP 204
@@ -207,15 +208,14 @@
             contract-id (yc/contract->id org env api contract)]
         ;; This API is found in browser Runtime Console
         ;; Contracts cannot be deleted unless the state is not revoked. 
-        (-> (http/post (format "https://anypoint.mulesoft.com/apimanager/xapi/v1/organizations/%s/environments/%s/apis/%s/contracts/%s/revoke" org-id env-id api-id contract-id)
+        (-> (http/post (format (gen-url "/apimanager/xapi/v1/organizations/%s/environments/%s/apis/%s/contracts/%s/revoke") org-id env-id api-id contract-id)
                        {:headers (default-headers)})
             (parse-response))
-        (-> (http/delete (format "https://anypoint.mulesoft.com/apimanager/api/v1/organizations/%s/environments/%s/apis/%s/contracts/%s" org-id env-id api-id contract-id)
+        (-> (http/delete (format (gen-url "/apimanager/api/v1/organizations/%s/environments/%s/apis/%s/contracts/%s") org-id env-id api-id contract-id)
                          {:headers (default-headers)})
             (parse-response)
             ;; body is nil on HTTP 204
-            (dissoc :body)
-            )))))
+            (dissoc :body))))))
 
 
 (def route

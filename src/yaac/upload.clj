@@ -1,4 +1,4 @@
-;; *   Yaac
+
 ;; *
 ;; *   Copyright (c) Tsutomu Miyashita. All rights reserved.
 ;; *
@@ -22,7 +22,8 @@
             [clojure.java.io :as io]
             [yaac.core :refer [parse-response default-headers
                                org->id org->id*
-                               env->id org->name load-session!] :as yc]
+                               env->id org->name load-session!
+                               gen-url] :as yc]
             [yaac.error :as e]
             [clojure.string :as str]
             [clojure.tools.cli :refer [parse-opts]]
@@ -107,7 +108,7 @@
                     v)
         n-path (str "pom-" (rand-int 10000) ".xml")
         
-        url (format "https://anypoint.mulesoft.com/exchange/api/v2/organizations/%s/assets/%s/%s/%s" group-id group-id artifact-id version)
+        url (format (gen-url "/exchange/api/v2/organizations/%s/assets/%s/%s/%s") group-id group-id artifact-id version)
 
         type-field (condp = (keyword asset-type)
                      :app "mule-application"
@@ -153,7 +154,7 @@
   (if (and group asset version raml-path)
     (let [group-id (org->id* group)
           artifact-id asset]
-      (-> (http/post (format "https://anypoint.mulesoft.com/exchange/api/v2/organizations/%s/assets/%s/%s/%s" group-id group-id artifact-id version)
+      (-> (http/post (format (gen-url "/exchange/api/v2/organizations/%s/assets/%s/%s/%s") group-id group-id artifact-id version)
                      {:headers {"Authorization" (str "Bearer " (:access-token yc/default-credential))
                                 "x-sync-publication" true
                                 "Content-Type" "multipart/form-data"}
