@@ -782,20 +782,23 @@
       :else
       (recur (z/right l) m))))
 
+(declare provider->name)
 ;;; Get
 (defn -get-users [org]
   (let [org (or org *org*)
         org-id (org->id org)]
-    (->> (http/get (format (gen-url "/accounts/api/organizations/%s/users") org-id)
+    (-> (http/get (format (gen-url "/accounts/api/organizations/%s/users") org-id)
                    {:headers (default-headers)})
          (parse-response)
          :body
-         :data)))
+         :data
+         (add-extra-fields :idp #(provider->name (get % :idprovider-id )))
+         )))
 
 (def -get-users (memoize -get-users))
 
-(defn get-users [{[org] :args}]
-  (-get-users org))
+(defn get-users [_]
+  (-get-users (:id (-get-root-organization))))
 
 (defn -get-user [user]
   (let [{root-org-id :id} (-get-root-organization)]
@@ -922,12 +925,21 @@
 (defn get-identity-providers [{:keys [args]}]
   (-get-identity-providers))
 
-(defn provider->id [id-or-name]
+(defn -get-identity-provider [id-or-name]
   (->> (-get-identity-providers)
        (filter #(or (= id-or-name (:provider-id %))
                     (= id-or-name (:name %))))
-       (first)
+       (first)))
+
+(def -get-identity-provider (memoize -get-identity-provider))
+
+(defn provider->id [id-or-name]
+  (->> (-get-identity-provider id-or-name)
        :provider-id))
+
+(defn provider->name [id-or-name]
+  (->> (-get-identity-provider id-or-name)
+       :name))
 
 
 
@@ -1411,8 +1423,8 @@
     ["ca"]
     ["ca|{*args}"]]
    
-   ["|" {:fields [:username :id :last-name :email :org-type]
-         :handler get-user}
+   ["|" {:fields [:username :id :email [:extra :idp]]
+         :handler get-users}
     ["user"]
     ["user|{*args}"]]
 

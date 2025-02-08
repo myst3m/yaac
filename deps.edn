@@ -32,5 +32,5 @@
            :deploy {:main-opts ["-m" "silvur.build" "deploy"]}
            :uber {:exec-fn silvur.build/uber
                   :exec-args {artifact "io.gitlab.myst3m/yaac"
-                              version "0.7.0"
+                              version "0.7.1"
                               main "yaac.cli"}}}}
