@@ -252,6 +252,7 @@
         "  - standalone-gateway [org] [env]        Get Standalone Gateway as Flex Gateway"        
         "  - policy [org] [env] api                Get Policies"               
         "  - entitlement                           Get entitilements for each runtime"
+        "  - idp                                   Get External IdP"                         
         "  - node-port [org]                       Get available node ports for apps using TCP"
         "                                          This function is required to be authenticated by 'Act as an user'"
         ""
@@ -272,22 +273,10 @@
         ""
         "For every sub commands, short cuts are available as below"
         ""
-        "> get org"
-        "> get env T1"
-        "> get app T1 Production"
-        "> get api T1 Production"
-        "> get cont T1 Production"
-        "> get rtf T1 "
-        "> get server T1 Production"
-        "> get ps T1 "
         "> get asset types=app,rest-api limit=100"
         "> get asset T1"
         "> get asset T1 -F group-id,asset-id,name"
         "> get asset -F +organization-id -g T1 -a hello-api"
-        "> get user T1"
-        "> get ca"
-        "> get ent"
-        "> get np T1"
         ""]
        (str/join \newline)))
 
@@ -317,6 +306,9 @@
           :body
           :data)
       (throw (e/org-not-found "Not found organization" :org (or org-id org))))))
+
+(defn -get-root-organization []
+  (first (filter :is-root (-get-organizations))))
 
 (def -get-environments (memoize-file -get-environments))
 
@@ -353,6 +345,8 @@
 (defn org->id [id-or-name]
   (or (org->id* id-or-name)
       (throw (e/org-not-found "Not found organization" :org id-or-name))))
+
+
 
 (defn env->id [org-id-or-name id-or-name]
   (let [xs (-get-environments (org->name org-id-or-name))
@@ -582,10 +576,8 @@
 
 
 
-(declare -get-runtime-targets)
+(declare target->name)
 
-(defn target->name [org env target]
-)
 
 (defn -get-container-applications [org env]
   (when (and org env)
@@ -791,15 +783,38 @@
       (recur (z/right l) m))))
 
 ;;; Get
-
-(defn get-user [{[org] :args}]
+(defn -get-users [org]
   (let [org (or org *org*)
         org-id (org->id org)]
     (->> (http/get (format (gen-url "/accounts/api/organizations/%s/users") org-id)
-                    {:headers (default-headers)})
+                   {:headers (default-headers)})
          (parse-response)
          :body
          :data)))
+
+(def -get-users (memoize -get-users))
+
+(defn get-users [{[org] :args}]
+  (-get-users org))
+
+(defn -get-user [user]
+  (let [{root-org-id :id} (-get-root-organization)]
+    (or (->> (-get-users root-org-id)
+             (filter #(or (= user (:username %))
+                          (= user (:id %))))
+             (first))
+        (throw (e/org-not-found "Not found user" :user user)))))
+
+(defn get-user [id-or-name]
+  (-get-user id-or-name))
+
+(defn user->name [id-or-name]
+  (:username (-get-user id-or-name)))
+
+(defn user->id [id-or-name]
+  (:id (-get-user id-or-name)))
+
+
 
 (defn assets-fields [& {:keys [output-format fields]
                         :or {fields [:group-id :asset-id  :type :version :status]}}]
@@ -878,6 +893,42 @@
                           :status #(get-in % [:last-reported-status])
                           :target #(get-in % [:target :name]))
         )))
+
+(defn -get-identity-provider-users [org]
+  (let [org-id (org->id org)]
+    (log/debug "org:" org-id)
+    (-> (http/get (format (gen-url "/accounts/api/organizations/%s/provider/users") org-id)
+                  {:headers (default-headers)})
+        (parse-response)
+        :body
+        :data
+        ;; (add-extra-fields :org (org->name org)
+        ;;                   :id :provider-id
+        ;;                   :type (comp :name :type))
+        )))
+
+(defn -get-identity-providers []
+  (let [{:keys [id name]} (first (filter :is-root (-get-organizations)))]
+    (-> (http/get (format (gen-url "/accounts/api/organizations/%s/identityProviders") id)
+                  {:headers (default-headers)})
+        (parse-response)
+        :body
+        :data
+        (add-extra-fields :org (org->name id)
+                          :id :provider-id
+                          :type (comp :name :type)))))
+
+
+(defn get-identity-providers [{:keys [args]}]
+  (-get-identity-providers))
+
+(defn provider->id [id-or-name]
+  (->> (-get-identity-providers)
+       (filter #(or (= id-or-name (:provider-id %))
+                    (= id-or-name (:name %))))
+       (first)
+       :provider-id))
+
 
 
 (def -get-hybrid-applications (memoize -get-hybrid-applications))
@@ -1344,7 +1395,7 @@
     ["node-port|{*args}"]
     ["np"]
     ["np|{*args}"]]
-   
+
    ;; Contracts
    ["|" {:fields [[:application :name] :id :status :api-id [:extra :api-name]]
          :handler get-api-contracts}
@@ -1370,12 +1421,18 @@
     ["conn|{*args}"]
     ["connection"]
     ["connection|{*args}"]]
-   
+
    ["|" {:handler get-api-policies}
     ["policy"]
     ["policy|{*args}"]
     ["pol"]
-    ["pol|{*args}"]]])
+    ["pol|{*args}"]]
+
+   ;; IDP
+   ["|" {:handler get-identity-providers
+         :fields [ :name [:extra :id] [:extra :org] [:extra :type]]}
+    ["idp"]
+    ["idp|{*args}"]]])
 
 
 

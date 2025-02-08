@@ -23,7 +23,11 @@
                                app->id
                                org->name
                                env->name
+                               user->id
+                               provider->id
                                load-session!
+                               -get-root-organization
+                               -get-user
                                gen-url] :as yc]
             [yaac.error :as e]
             [clojure.string :as str]
@@ -48,6 +52,8 @@
         "  - asset -g GROUP -a ASSET -v VERSION [options]     Delete asset. Required to specify group, artifact name and version."
         "  - app [org] [env] <app|id>                         Delete deployed application."
         "  - api [org] [env] <api|id>                         Delete deployed api instances."
+        "  - idp-user <email> provider=<name>                 Delete IdP user profile."
+        
         ""
         "Example:"
         ""
@@ -65,6 +71,9 @@
         ""
         "# Delete the application. It is possible omit Org/Env if you set as default context"
         "  > yaac delete app hello-api"
+        ""
+        "# Delete the IdP user profile"
+        "  > yaac delete idp-user my-external-user provider=openid-provider-localhost"        
         ""
         ""]
     (str/join \newline)))
@@ -218,6 +227,16 @@
             (dissoc :body))))))
 
 
+(defn delete-idp-user-profile [{:keys [args provider]}]
+  (let [[user] (reverse args)
+        {root-org-id :id} (-get-root-organization)
+        {:keys [id email]} (-get-user user)
+        provider-id (provider->id provider)]
+    (http/delete (format (gen-url "/accounts/api/organizations/%s/users/%s/identityProviderProfiles")
+                         root-org-id
+                         id)
+                 {:headers (default-headers)
+                  :body (edn->json {:idp-user-id email :provider-id provider-id})})))
 (def route
   (for [op ["del" "delete"]]
     [op {:options options
@@ -242,4 +261,7 @@
                        :handler delete-api-contracts}]
      ["|asset"]
      ["|asset|{*args}" {:fields [:status [:extra :group] [:extra  :asset] [:extra :version]]
-                        :handler delete-asset}]]))
+                        :handler delete-asset}]
+     ["|idp-user"]
+     ["|idp-user|{*args}" {:fields [:status :body]
+                                   :handler delete-idp-user-profile}]]))

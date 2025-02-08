@@ -83,7 +83,7 @@
           ;;         (first arguments))
 
           headers (->> arguments
-                       (filter #(re-find #"[a-z]+:[^/]+" %))
+                       (filter #(re-find #"^[A-Z]+:[^/]+" %))
                        (mapv #(str/split % #":"))
                        (map #(update-in % [0] keyword))
                        (into {}))
