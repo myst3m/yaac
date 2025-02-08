@@ -921,9 +921,11 @@
                           :id :provider-id
                           :type (comp :name :type)))))
 
+(def -get-identity-providers (memoize -get-identity-providers))
 
 (defn get-identity-providers [{:keys [args]}]
   (-get-identity-providers))
+
 
 (defn -get-identity-provider [id-or-name]
   (->> (-get-identity-providers)
