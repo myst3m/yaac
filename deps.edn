@@ -1,4 +1,5 @@
 {:paths ["src" "resources"]
+ :mvn/repos {"mule-release" {:url "https://repository.mulesoft.org/releases/"}}
  :deps {org.clojure/clojure {:mvn/version "1.12.0"}
         org.clojure/tools.cli {:mvn/version "1.0.206"}
         metosin/reitit {:mvn/version "0.7.0-alpha5"}
@@ -18,7 +19,11 @@
         com.mysql/mysql-connector-j {:mvn/version "8.4.0"}
         io.gitlab.myst3m/silvur {:local/root "/home/myst/projects/silvur"
                                  ;;:mvn/version "2.5.4"
-                                 }}
+                                 }
+        org.mule.weave/runtime {:mvn/version "2.9.1"}
+        org.mule.weave/core-modules {:mvn/version "2.9.1"}
+        org.mule.weave/java-module {:mvn/version "2.9.1"}
+        org.mule.weave/yaml-module {:mvn/version "2.9.1"}}
 
  :aliases {:test {:extra-paths ["test"]
                   :extra-deps {org.clojure/test.check {:mvn/version "0.10.0"}}}
@@ -32,5 +37,5 @@
            :deploy {:main-opts ["-m" "silvur.build" "deploy"]}
            :uber {:exec-fn silvur.build/uber
                   :exec-args {artifact "io.gitlab.myst3m/yaac"
-                              version "0.7.1"
+                              version "0.7.2"
                               main "yaac.cli"}}}}

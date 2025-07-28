@@ -31,6 +31,7 @@
             [yaac.config :as cnf]
             [yaac.logs :as logs]
             [yaac.analyze :as ana]
+            [yaac.dw :as dw]
             [clojure.core.async :as async]
             [jansi-clj.core :as jansi]
             [yaac.auth :as auth]
@@ -39,7 +40,7 @@
             [malli.core :as m]
             [malli.error :as me]))
 
-(def version "0.7.0")
+(def version "0.7.2")
 
 ;;; main
 
@@ -66,6 +67,7 @@
         "  config    context|credential|clear-cache ...             Configurate contexts"
         "  auth      azure                                          OAuth2 authorization code flow"
         "  http      -                                              Request HTTP to an application"
+        "  dw        [script-path] [input-payload]                  Execute DataWeave scripts"
         ""
         "Please refer to the manual page for more information."
         ""]
@@ -113,7 +115,9 @@
                        ;; Update
                        yaac.update/route
                        ;; Config
-                       yaac.config/route]))
+                       yaac.config/route
+                       ;; DataWeave
+                       yaac.dw/route]))
 
 (def cli-global-options [["-o" "--output-format FORMAT" "Output format (short,json,edn)"
                           :default-desc "short"
@@ -167,7 +171,9 @@
           {:keys [handler options usage help no-token]} data
           {:keys [args] :as params} path-params
           cooked-params (cond-> path-params
-                          :always  (update :args #(some-> % (str/split #"\|")))
+                          :always  (-> (update :args #(some-> % (str/split #"\|")))
+                                       (update :args #(map (fn[x] (str/replace x #"\+" " ")) %))
+                                       )
                           :always (ext-parse-opts (concat options cli-global-options))
                           (:help data) (assoc :help (:help data)) ;; merge
                           (:output-format data) (assoc :output-format (:output-format data))) ;;merge
@@ -222,8 +228,9 @@
                                                        results
                                                        cooked-params))
                                (let [preferred-fields (filter #(re-find #"^[^\+]" (name %)) cmd-given-fileds)]
+                                 (log/debug "command:" cmd-given-fileds)
                                  (yc/default-format-by (cond->> cmd-given-fileds
-                                                         :always (map #(str/replace (name %) #"^\+" ""))
+                                                         :always (map #(str/replace (name %) #"^\+" " "))
                                                          :always  (map #(mapv keyword (str/split % #"\.")))
                                                          (not (seq preferred-fields)) (into default-fields)
                                                          :always (distinct))
