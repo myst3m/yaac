@@ -21,7 +21,6 @@
             [taoensso.nippy :as nippy]
             [silvur.http :as http]
             [silvur.nio :as nio]
-            [org.httpkit.client :refer [url-encode]]
             [camel-snake-kebab.core :as csk]
             [camel-snake-kebab.extras :as cske]
             [silvur.util :refer [json->edn edn->json]]
@@ -29,7 +28,7 @@
             [silvur.http]
             [org.httpkit.server :refer [run-server]]
             [clojure.data.json :as json]
-            [org.httpkit.client :as hk]
+            ;; [org.httpkit.client :as hk]
             [yaac.util :as util]
             [yaac.error :as e]
             [clojure.data.xml :as dx]
@@ -250,11 +249,13 @@
         "  - connected-app                         Get connected applications"
         "  - runtime-target [org] [env]            Get runtime targets of RTF and CloudHub 2.0"
         "  - standalone-gateway [org] [env]        Get Standalone Gateway as Flex Gateway"        
-        "  - policy [org] [env] api                Get Policies"               
+        "  - policy [org] [env] api                Get Policies"
         "  - entitlement                           Get entitilements for each runtime"
-        "  - idp                                   Get External IdP"                         
+        "  - idp                                   Get External IdP"
         "  - node-port [org]                       Get available node ports for apps using TCP"
         "                                          This function is required to be authenticated by 'Act as an user'"
+        "  - metrics [org] [env]                   Get metrics from Anypoint Monitoring"
+        "                                          Use --type for predefined metrics or --query for raw AMQL"
         ""
         "Exchange Graph API Keys:"
         ""
@@ -287,7 +288,37 @@
                :parse-fn #(str/split % #",")]
               ["-A" "--all" "Query assets in all organizations or all applications"]
               ["-F" "--fields FIELDS" "Fields for assets list"
-               :parse-fn #(mapv csk/->kebab-case-keyword (str/split % #","))]])
+               :parse-fn #(mapv csk/->kebab-case-keyword (str/split % #","))]
+              ;; Metrics options
+              [nil "--type TYPE" "Predefined metric type (app-inbound, app-inbound-response-time, app-outbound, api-path, api-summary)"
+               :id :type]
+              [nil "--describe METRIC" "Describe metric structure"
+               :id :describe]
+              [nil "--query AMQL" "Raw AMQL query"
+               :id :query]
+              [nil "--start TIMESTAMP" "Start timestamp (Unix ms or ISO8601)"
+               :id :start]
+              [nil "--end TIMESTAMP" "End timestamp (Unix ms or ISO8601)"
+               :id :end]
+              [nil "--from DURATION" "Relative start time (e.g., 1h, 30m, 1d)"
+               :id :from]
+              [nil "--duration DURATION" "Duration from start (e.g., 30m, 1h)"
+               :id :duration]
+              [nil "--aggregation FUNC" "Aggregation function (count, sum, avg, max, min)"
+               :id :aggregation]
+              [nil "--app-id ID" "Filter by application ID"
+               :id :app-id]
+              [nil "--api-id ID" "Filter by API ID"
+               :id :api-id]
+              [nil "--group-by DIMS" "Group by dimensions (comma-separated)"
+               :id :group-by
+               :parse-fn #(str/split % #",")]
+              [nil "--limit N" "Result limit"
+               :id :limit
+               :parse-fn parse-long]
+              [nil "--offset N" "Result offset"
+               :id :offset
+               :parse-fn parse-long]])
 
 ;; (defn get* [{:keys [args] :as opts}]
 ;;   (let []
@@ -365,9 +396,12 @@
   (let [default-opts {:limit "30" :latest-versions-only "true"}
         cooked-opts (if all
                       (assoc opts :organization-ids [])
-                      (->> (concat (:organization-ids opts) [(or org *org*)])
+                      (->> (concat (:organization-ids opts) 
+                                   (if group-id
+                                     [group-id]  ; group-id is already converted to ID  
+                                     [(or org *org*)]))
                           (keep identity )
-                          (mapv org->id )
+                          (mapv org->id)  ; org->id handles IDs safely
                           (assoc opts :organization-ids )))]
 
     (log/debug "Search options: " (dissoc cooked-opts :summary))
@@ -561,16 +595,19 @@
                    :as opts}]
   ;; (when-not (or (every? identity [group asset]) (every? not [group asset]))
   ;;   (throw (e/invalid-arguments "A group and a name should be given both, or neighter." {:group group :asset asset})))
-  (let []
+  (let [group-id (when group (org->id group))]
     ;; Added group-id and asset-id as keys so as to query by asset(...)
     (-> (graphql-search-assets (cond-> opts
-                                 group (assoc :group-id (org->id (or group *org*)))
+                                 group (assoc :group-id group-id)
                                  asset (assoc :asset-id asset)))
-        (->> (filter #(or all (and (= (:organization-id %) (org->id (or org *org*)))
-                                   (= (:group-id %) (or (try-wrap (org->id group))
-                                                        group
-                                                        (try-wrap (org->id org))
-                                                        (try-wrap (org->id *org*))))))))
+        (->> (filter #(or all 
+                         ;; If group is specified, use group-id for filtering
+                         (if group
+                           (= (:group-id %) group-id)
+                           ;; Otherwise use the original logic
+                           (and (= (:organization-id %) (org->id (or org *org*)))
+                                (= (:group-id %) (or (try-wrap (org->id org))
+                                                    (try-wrap (org->id *org*)))))))))
         (add-extra-fields :group-name #(org->name (:group-id %)))
         (->> (map #(assoc % :organization-name (or (org->name (:organization-id %)) "-")))))))
 
@@ -1279,6 +1316,191 @@
       :body
       ))
 
+;;; Metrics API Implementation
+
+;; Predefined metric types for common use cases
+(def predefined-metrics
+  {"app-inbound" {:metric "mulesoft.app.inbound"
+                  :default-aggregation "count"
+                  :measurement "requests"
+                  :default-group-by ["deployment.id"]}
+   "app-inbound-response-time" {:metric "mulesoft.app.inbound"
+                                 :default-aggregation "avg"
+                                 :measurement "response_time"}
+   "app-outbound" {:metric "mulesoft.app.outbound"
+                   :default-aggregation "count"
+                   :measurement "requests"
+                   :default-group-by ["deployment.id"]}
+   "api-path" {:metric "mulesoft.api.path"
+               :default-aggregation "count"
+               :measurement "requests"
+               :default-group-by ["api.instance.id"]}
+   "api-summary" {:metric "mulesoft.api.summary"
+                  :default-aggregation "count"
+                  :measurement "requests"
+                  :default-group-by ["api.instance.id"]}})
+
+;; Parse duration string (1h, 30m, 1d) to milliseconds
+(defn parse-duration [s]
+  (when s
+    (let [pattern #"(\d+)([smhd])"
+          matches (re-find pattern (str s))]
+      (when matches
+        (let [[_ num unit] matches
+              n (parse-long num)]
+          (case unit
+            "s" (* n 1000)
+            "m" (* n 60 1000)
+            "h" (* n 60 60 1000)
+            "d" (* n 24 60 60 1000)
+            nil))))))
+
+;; Parse timestamp (Unix timestamp or ISO8601)
+(defn parse-timestamp [s]
+  (cond
+    (number? s) s
+    (string? s) (try
+                  (parse-long s)
+                  (catch Exception _
+                    ;; If not a number, try ISO8601 parsing
+                    (-> (java.time.Instant/parse s)
+                        (.toEpochMilli))))
+    :else nil))
+
+;; Convert various time specifications to [start-ms end-ms]
+(defn resolve-time-range [{:keys [start end from duration]}]
+  (cond
+    ;; Absolute time range
+    (and start end)
+    [(parse-timestamp start) (parse-timestamp end)]
+
+    ;; Relative with duration
+    (and from duration)
+    (let [end-ms (System/currentTimeMillis)
+          start-ms (- end-ms (parse-duration from))]
+      [start-ms (+ start-ms (parse-duration duration))])
+
+    ;; Relative from now
+    from
+    (let [end-ms (System/currentTimeMillis)
+          start-ms (- end-ms (parse-duration from))]
+      [start-ms end-ms])
+
+    ;; Default: last 1 hour
+    :else
+    (let [end-ms (System/currentTimeMillis)
+          start-ms (- end-ms (* 60 60 1000))]
+      [start-ms end-ms])))
+
+;; Build AMQL query from parameters
+(defn build-amql-query [metric-name {:keys [aggregation group-by app-id api-id start end field measurement]}]
+  (let [agg (str/upper-case (or aggregation "COUNT"))
+        ;; Default measurement name is "requests"
+        measure (or measurement field "requests")
+        select-parts (cond-> [(format "%s(%s)" agg measure)]
+                       group-by (concat (map #(format "\"%s\"" %) group-by)))
+        select-clause (str/join ", " select-parts)
+        group-clause (when group-by
+                       (format " GROUP BY %s" (str/join ", " (map #(format "\"%s\"" %) group-by))))
+        where-clauses (cond-> [(format "timestamp BETWEEN %d AND %d" start end)]
+                        app-id (conj (format "\"app.id\" = '%s'" app-id))
+                        api-id (conj (format "\"api.id\" = '%s'" api-id)))
+        where-clause (str/join " AND " where-clauses)]
+    (format "SELECT %s FROM \"%s\" WHERE %s%s"
+            select-clause
+            metric-name
+            where-clause
+            (or group-clause ""))))
+
+;; GET /metric_types - List available metric types
+(defn -list-metric-types [org env]
+  (let [org-id (org->id org)
+        env-id (env->id org env)]
+    (->> (http/get (gen-url "/observability/api/v1/metric_types")
+                   {:headers (default-headers)
+                    :query-params {:organizationId org-id
+                                   :environmentId env-id}})
+         (parse-response)
+         :body)))
+
+;; GET /metric_types/{name}:describe - Get metric structure
+(defn -describe-metric [org env metric-name]
+  (let [org-id (org->id org)
+        env-id (env->id org env)]
+    (->> (http/get (gen-url (format "/observability/api/v1/metric_types/%s:describe"
+                                    metric-name))
+                   {:headers (default-headers)
+                    :query-params {:organizationId org-id
+                                   :environmentId env-id}})
+         (parse-response)
+         :body)))
+
+;; POST /metrics:search - Query metrics with AMQL
+(defn -search-metrics [org env amql-query {:keys [limit offset]}]
+  (let [org-id (org->id org)
+        env-id (env->id org env)
+        payload {:query amql-query
+                 :organizationId org-id
+                 :environmentId env-id}]
+    (->> (http/post (gen-url "/observability/api/v1/metrics:search")
+                    {:headers (default-headers)
+                     :query-params {:offset (or offset 0)
+                                    :limit (or limit 100)}
+                     :body (edn->json payload)})
+         (parse-response :raw)
+         :body)))
+
+;; Public handler for metrics command
+(defn get-metrics [{:keys [args describe type query start end from duration
+                           aggregation app-id api-id group-by limit offset]
+                    [org env] :args
+                    :as opts}]
+  (let [org (or org *org*)
+        env (or env *env*)]
+    (when-not (and org env)
+      (throw (e/invalid-arguments "Organization and Environment required" {:args args})))
+
+    (cond
+      ;; List metric types
+      (and (not describe) (not type) (not query))
+      (-list-metric-types org env)
+
+      ;; Describe metric
+      describe
+      (-describe-metric org env describe)
+
+      ;; Query with predefined type
+      type
+      (let [[start-ms end-ms] (resolve-time-range opts)
+            metric-def (get predefined-metrics type)
+            _ (when-not metric-def
+                (throw (e/invalid-arguments (str "Unknown metric type: " type)
+                                           {:available-types (keys predefined-metrics)})))
+            amql (build-amql-query (:metric metric-def)
+                                   (merge {:start start-ms
+                                           :end end-ms
+                                           :aggregation (or aggregation
+                                                           (:default-aggregation metric-def))
+                                           :group-by (or group-by
+                                                        (:default-group-by metric-def))
+                                           :app-id app-id
+                                           :api-id api-id
+                                           :measurement (:measurement metric-def)
+                                           :field (:field metric-def)}))]
+        (-> (-search-metrics org env amql opts)
+            :data
+            (add-extra-fields :org org
+                             :env env
+                             :metric-type type)))
+
+      ;; Query with raw AMQL
+      query
+      (let [[start-ms end-ms] (resolve-time-range opts)]
+        (-> (-search-metrics org env query opts)
+            :data
+            (add-extra-fields :org org
+                             :env env))))))
+
 
 
 (def route
@@ -1446,7 +1668,13 @@
    ["|" {:handler get-identity-providers
          :fields [ :name [:extra :id] [:extra :org] [:extra :type]]}
     ["idp"]
-    ["idp|{*args}"]]])
+    ["idp|{*args}"]]
+
+   ;; Metrics
+   ["|" {:handler get-metrics
+         :fields [:name :label :description]}
+    ["metrics"]
+    ["metrics|{*args}"]]])
 
 
 

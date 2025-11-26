@@ -1,6 +1,6 @@
 {:paths ["src" "resources"]
  :mvn/repos {"mule-release" {:url "https://repository.mulesoft.org/releases/"}}
- :deps {org.clojure/clojure {:mvn/version "1.12.0"}
+ :deps {org.clojure/clojure {:mvn/version "1.12.3"}
         org.clojure/tools.cli {:mvn/version "1.0.206"}
         metosin/reitit {:mvn/version "0.7.0-alpha5"}
         org.fusesource.jansi/jansi {:mvn/version "2.4.0"}
@@ -37,5 +37,5 @@
            :deploy {:main-opts ["-m" "silvur.build" "deploy"]}
            :uber {:exec-fn silvur.build/uber
                   :exec-args {artifact "io.gitlab.myst3m/yaac"
-                              version "0.7.2"
+                              version "0.7.3"
                               main "yaac.cli"}}}}
