@@ -29,7 +29,6 @@
             [silvur.http]
             [org.httpkit.server :refer [run-server]]
             [clojure.data.json :as json]
-            [org.httpkit.client :as hk]
             [yaac.util :as util]
             [yaac.error :as e]
             [clojure.data.xml :as dx]

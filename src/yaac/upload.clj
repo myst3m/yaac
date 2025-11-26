@@ -29,7 +29,6 @@
             [clojure.tools.cli :refer [parse-opts]]
             [yaac.incubate :as ic]
             [clojure.spec.alpha :as s]
-            [org.httpkit.client :as hk]
             [camel-snake-kebab.core :as csk]
             [camel-snake-kebab.extras :as cske]
             [clojure.core.match :refer [match]]

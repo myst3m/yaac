@@ -31,7 +31,7 @@
             [yaac.config :as cnf]
             [yaac.logs :as logs]
             [yaac.analyze :as ana]
-            [yaac.dw :as dw]
+            ;;[yaac.dw :as dw]
             [clojure.core.async :as async]
             [jansi-clj.core :as jansi]
             [yaac.auth :as auth]
@@ -40,7 +40,7 @@
             [malli.core :as m]
             [malli.error :as me]))
 
-(def version "0.7.2")
+(def version "0.7.3")
 
 ;;; main
 
@@ -67,7 +67,7 @@
         "  config    context|credential|clear-cache ...             Configurate contexts"
         "  auth      azure                                          OAuth2 authorization code flow"
         "  http      -                                              Request HTTP to an application"
-        "  dw        [script-path] [input-payload]                  Execute DataWeave scripts"
+;;        "  dw        [script-path] [input-payload]                  Execute DataWeave scripts"
         ""
         "Please refer to the manual page for more information."
         ""]
@@ -117,7 +117,8 @@
                        ;; Config
                        yaac.config/route
                        ;; DataWeave
-                       yaac.dw/route]))
+                       ;;yaac.dw/route
+                       ]))
 
 (def cli-global-options [["-o" "--output-format FORMAT" "Output format (short,json,edn)"
                           :default-desc "short"
