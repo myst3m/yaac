@@ -278,6 +278,13 @@
         "> get asset T1"
         "> get asset T1 -F group-id,asset-id,name"
         "> get asset -F +organization-id -g T1 -a hello-api"
+        ""
+        "Metrics examples:"
+        ""
+        "> get metrics MyOrg Production --type app-inbound --from 1h"
+        "> get metrics MyOrg Production --type app-inbound-response-time --from 30m --app-id <app-id>"
+        "> get metrics MyOrg Production --query 'from inbound.metrics select count() where app.id = \"<app-id>\"'"
+        "> get metrics MyOrg Production --describe app-inbound"
         ""]
        (str/join \newline)))
 
