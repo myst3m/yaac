@@ -1347,16 +1347,6 @@
 
 
 
-(defn password-test-post []
-  (-> (http/post "https://login.salesforce.com/services/oauth2/token"
-                 {:query-params {"grant_type" "password"
-                                 "client_id" "3MVG9Rr0EZ2YOVMYfgg4NCfRt63Jo0z87mV.r3sp2J.mbmu2.RYiSzlC1zOApPYtxxYSb1fm.RMWHfzlBsF9f"
-                                 "client_secret" "9CE17EA1D976F036B72E6FC04C208742C7EC6D3C9851F7876FC6AA23CA25AA2D"
-                                 "username" "tmiyashita@tmiyashita-240319-795.demo"
-                                 "password" "GNU%Emacs29"}})
-      :body
-      ))
-
 ;;; Metrics API Implementation
 
 ;; Predefined metric types for common use cases
