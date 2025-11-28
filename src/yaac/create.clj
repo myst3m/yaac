@@ -84,13 +84,13 @@
         "  yaac create env T1.1 live type=production"
         ""
         "# Invite user to organization"
-        "  yaac create invitation MyOrg --email user@example.com"
+        "  yaac create invitation T1 --email user@example.com"
         ""
         "# Invite user with team assignment"
-        "  yaac create invitation MyOrg --email user@example.com --team-id abc123"
+        "  yaac create invitation T1 --email user@example.com --team-id abc123"
         ""
         "# Invite user with team as maintainer"
-        "  yaac create invitation MyOrg --email user@example.com --team-id abc123 --membership-type maintainer"
+        "  yaac create invitation T1 --email user@example.com --team-id abc123 --membership-type maintainer"
         ""
         ""]
        (str/join \newline)))
@@ -287,9 +287,9 @@
     --membership-type - Membership type (member or maintainer, default: member)
 
   Example:
-    yaac create invitation MyOrg --email user@example.com
-    yaac create invitation MyOrg --email user@example.com --team-id MyTeam
-    yaac create invitation MyOrg --email user@example.com --team-id abc123 --membership-type maintainer"
+    yaac create invitation T1 --email user@example.com
+    yaac create invitation T1 --email user@example.com --team-id MyTeam
+    yaac create invitation T1 --email user@example.com --team-id abc123 --membership-type maintainer"
   (when-not email
     (throw (e/invalid-arguments "Email is required" :email email)))
   (let [org-name (or org *org*)
