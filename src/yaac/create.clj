@@ -65,8 +65,8 @@
         ""
         "  invitation:"
         "   - email:               user's email address            (required)"
-        "   - teams:               team assignments                 (optional, format: team_id:membership_type,...)"
-        "   - team-id:             single team ID                   (optional)"
+        "   - teams:               team assignments                 (optional, format: team_name_or_id:membership_type,...)"
+        "   - team-id:             single team ID or name           (optional)"
         "   - membership-type:     member or maintainer             (optional, default: member)"
         ""
         "Examples:"
@@ -101,8 +101,8 @@
               ["-v" "--version VERSION" "Asset version"]
               ["-p" "--parent NAME" "Parent organization"]
               ["-e" "--email EMAIL" "Email address for user invitation"]
-              ["-t" "--teams TEAMS" "Team assignments (format: team_id:membership_type,...)"]
-              [nil "--team-id ID" "Single team ID for invitation"]
+              ["-t" "--teams TEAMS" "Team assignments (format: team_name_or_id:membership_type,...)"]
+              [nil "--team-id ID_OR_NAME" "Single team ID or name for invitation"]
               [nil "--membership-type TYPE" "Membership type (member or maintainer, default: member)"]])
 
 
@@ -282,30 +282,31 @@
     --email    - Email address of user to invite
 
   Optional:
-    --teams         - Comma-separated list of team IDs (format: team_id:membership_type)
-    --team-id       - Single team ID (shortcut)
+    --teams         - Comma-separated list of team IDs or names (format: team:membership_type)
+    --team-id       - Single team ID or name (shortcut)
     --membership-type - Membership type (member or maintainer, default: member)
 
   Example:
     yaac create invitation MyOrg --email user@example.com
-    yaac create invitation MyOrg --email user@example.com --team-id abc123
+    yaac create invitation MyOrg --email user@example.com --team-id MyTeam
     yaac create invitation MyOrg --email user@example.com --team-id abc123 --membership-type maintainer"
   (when-not email
     (throw (e/invalid-arguments "Email is required" :email email)))
-  (let [org-id (org->id (or org *org*))
+  (let [org-name (or org *org*)
+        org-id (org->id org-name)
         ;; Parse teams if provided
         teams-list (cond
-                     ;; If teams string provided (format: "team_id1:member,team_id2:maintainer")
+                     ;; If teams string provided (format: "team1:member,team2:maintainer")
                      teams
                      (map (fn [team-str]
                             (let [[tid mtype] (str/split team-str #":")]
-                              {:team-id (str/trim tid)
+                              {:team-id (yc/team->id org-name (str/trim tid))
                                :membership-type (or (some-> mtype str/trim) "member")}))
                           (str/split teams #","))
 
-                     ;; If single team-id provided
+                     ;; If single team-id provided (can be ID or name)
                      team-id
-                     [{:team-id team-id
+                     [{:team-id (yc/team->id org-name team-id)
                        :membership-type (or membership-type "member")}]
 
                      ;; No teams
