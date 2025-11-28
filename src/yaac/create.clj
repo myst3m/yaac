@@ -83,14 +83,14 @@
         "# Create env named live in Production type"
         "  yaac create env T1.1 live type=production"
         ""
-        "# Invite user to organization"
-        "  yaac create invitation T1 --email user@example.com"
+        "# Invite user to root organization"
+        "  yaac create invite --email user@example.com"
         ""
         "# Invite user with team assignment"
-        "  yaac create invitation T1 --email user@example.com --team-id abc123"
+        "  yaac create invite --email user@example.com --team-id abc123"
         ""
         "# Invite user with team as maintainer"
-        "  yaac create invitation T1 --email user@example.com --team-id abc123 --membership-type maintainer"
+        "  yaac create invite --email user@example.com --team-id abc123 --membership-type maintainer"
         ""
         ""]
        (str/join \newline)))
@@ -272,13 +272,11 @@
     (-create-api-policy org env api policy (dissoc opts :args))))
 
 
-(defn invite-user [{:keys [args email teams team-id membership-type]
-                    [org] :args
+(defn invite-user [{:keys [email teams team-id membership-type]
                     :as opts}]
-  "Invite a user to an organization
+  "Invite a user to the root organization
 
   Required:
-    org        - Organization name or ID
     --email    - Email address of user to invite
 
   Optional:
@@ -287,13 +285,13 @@
     --membership-type - Membership type (member or maintainer, default: member)
 
   Example:
-    yaac create invitation T1 --email user@example.com
-    yaac create invitation T1 --email user@example.com --team-id MyTeam
-    yaac create invitation T1 --email user@example.com --team-id abc123 --membership-type maintainer"
+    yaac create invite --email user@example.com
+    yaac create invite --email user@example.com --team-id MyTeam
+    yaac create invite --email user@example.com --team-id abc123 --membership-type maintainer"
   (when-not email
     (throw (e/invalid-arguments "Email is required" :email email)))
-  (let [org-name (or org *org*)
-        org-id (org->id org-name)
+  (let [{root-org-id :id} (yc/-get-root-organization)
+        org-id root-org-id
         ;; Parse teams if provided
         teams-list (cond
                      ;; If teams string provided (format: "team1:member,team2:maintainer")
@@ -345,9 +343,6 @@
                       :handler create-api-instance}]]
      ["|"
       ["policy|{*args}" {:handler create-api-policy}]]
-     ["|" {:help true}
-      ["invitation"]
-      ["invite"]]
      ["|" {:handler invite-user
            :fields [:email :status]}
       ["invitation|{*args}"]
