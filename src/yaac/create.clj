@@ -289,10 +289,10 @@
                            (map str/trim (str/split role-groups #","))
                            role-groups))
         body (cond-> {:email email}
-               role-group-ids (assoc :roleGroupIds role-group-ids))]
+               role-group-ids (assoc :role-group-ids role-group-ids))]
     (-> (http/post (format (gen-url "/accounts/api/organizations/%s/invites") org-id)
                    {:headers (default-headers)
-                    :body (edn->json body :camel)})
+                    :body (edn->json :camel body)})
         (parse-response)
         :body)))
 
