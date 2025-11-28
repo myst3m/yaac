@@ -246,6 +246,7 @@
         "  - private-space  [org] [env]            Get CloudHub 2.0 Private Spaces "
         "  - asset [org] key1=val1 key2=val2 ...   Get assets in Anypoint Exchange"
         "  - user [org]                            Get users that belong to the organization"
+        "  - team [org]                            Get teams in the organization"
         "  - connected-app                         Get connected applications"
         "  - runtime-target [org] [env]            Get runtime targets of RTF and CloudHub 2.0"
         "  - standalone-gateway [org] [env]        Get Standalone Gateway as Flex Gateway"        
@@ -865,8 +866,9 @@
 ;;; Teams
 
 (defn -get-teams [org]
-  (let [org-id (org->id org)]
-    (-> (http/get (format (gen-url "/accounts/api/organizations/%s/teams") org-id)
+  ;; Teams API only works on root/master organization
+  (let [{root-org-id :id} (-get-root-organization)]
+    (-> (http/get (format (gen-url "/accounts/api/organizations/%s/teams") root-org-id)
                   {:headers (default-headers)})
         (parse-response)
         :body
@@ -881,7 +883,7 @@
   (let [teams (-get-teams org)
         team (first (filter #(or (= id-or-name (:id %))
                                  (= id-or-name (:team-id %))
-                                 (= id-or-name (:name %)))
+                                 (= id-or-name (:team-name %)))
                             teams))]
     (or (:team-id team)
         (:id team)
@@ -889,10 +891,10 @@
 
 (defn team->name [org id-or-name]
   (let [teams (-get-teams org)]
-    (:name (first (filter #(or (= id-or-name (:id %))
-                               (= id-or-name (:team-id %))
-                               (= id-or-name (:name %)))
-                          teams)))))
+    (:team-name (first (filter #(or (= id-or-name (:id %))
+                                    (= id-or-name (:team-id %))
+                                    (= id-or-name (:team-name %)))
+                               teams)))))
 
 
 (defn assets-fields [& {:keys [output-format fields]
@@ -1690,6 +1692,11 @@
          :handler get-users}
     ["user"]
     ["user|{*args}"]]
+
+   ["|" {:fields [:team-name :team-id :org-id]
+         :handler get-teams}
+    ["team"]
+    ["team|{*args}"]]
 
    ["|" {:handler get-cloudhub20-connections}
     ["conn"]
