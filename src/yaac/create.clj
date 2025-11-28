@@ -39,6 +39,7 @@
         " - environment"
         " - api"
         " - policy"
+        " - invitation"
         ""
         "Options:"
         ""
@@ -62,6 +63,10 @@
         "      * ip-expression    remote ip expression            (default: #[attributes.headers['x-forwarded-for']])"
         "      * ips              allow list                      (default: 0.0.0.0/0)"
         ""
+        "  invitation:"
+        "   - email:               user's email address            (required)"
+        "   - role-groups:         role group IDs or names         (optional, comma-separated)"
+        ""
         "Examples:"
         ""
         "# Create API instance "
@@ -74,9 +79,13 @@
         "  yaac create org T1.1 --parent T1  v-cores=0.1:0.3:0.0"
         ""
         "# Create env named live in Production type"
-        "  yaac create env T1.1 live type=production"        
+        "  yaac create env T1.1 live type=production"
         ""
-
+        "# Invite user to organization"
+        "  yaac create invitation MyOrg --email user@example.com"
+        ""
+        "# Invite user with role groups"
+        "  yaac create invitation MyOrg --email user@example.com --role-groups Administrator"
         ""
         ""]
        (str/join \newline)))
@@ -85,7 +94,9 @@
 (def options [["-g" "--group NAME" "Group name. Normally BG name"]
               ["-a" "--asset NAME" "Asset name"]
               ["-v" "--version VERSION" "Asset version"]
-              ["-p" "--parent NAME" "Parent organization"]])
+              ["-p" "--parent NAME" "Parent organization"]
+              ["-e" "--email EMAIL" "Email address for user invitation"]
+              ["-r" "--role-groups ROLES" "Role group IDs or names (comma-separated)"]])
 
 
 (defn create-organization [{:keys [parent
@@ -254,6 +265,38 @@
     (-create-api-policy org env api policy (dissoc opts :args))))
 
 
+(defn invite-user [{:keys [args email role-groups]
+                    [org] :args
+                    :as opts}]
+  "Invite a user to an organization
+
+  Required:
+    org        - Organization name or ID
+    --email    - Email address of user to invite
+
+  Optional:
+    --role-groups - Comma-separated list of role group IDs or names
+
+  Example:
+    yaac create invitation MyOrg --email user@example.com
+    yaac create invitation MyOrg --email user@example.com --role-groups Administrator"
+  (when-not email
+    (throw (e/invalid-arguments "Email is required" :email email)))
+  (let [org-id (org->id (or org *org*))
+        ;; Parse role-groups if provided (comma-separated)
+        role-group-ids (when role-groups
+                         (if (string? role-groups)
+                           (map str/trim (str/split role-groups #","))
+                           role-groups))
+        body (cond-> {:email email}
+               role-group-ids (assoc :roleGroupIds role-group-ids))]
+    (-> (http/post (format (gen-url "/accounts/api/organizations/%s/invites") org-id)
+                   {:headers (default-headers)
+                    :body (edn->json body :camel)})
+        (parse-response)
+        :body)))
+
+
 
 (def route
   (for [op ["c" "create"]]
@@ -277,4 +320,11 @@
       ["api|{*args}" {:fields [:id :asset-id :asset-version]
                       :handler create-api-instance}]]
      ["|"
-      ["policy|{*args}" {:handler create-api-policy}]]]))
+      ["policy|{*args}" {:handler create-api-policy}]]
+     ["|" {:help true}
+      ["invitation"]
+      ["invite"]]
+     ["|" {:handler invite-user
+           :fields [:email :status]}
+      ["invitation|{*args}"]
+      ["invite|{*args}"]]]))
