@@ -65,7 +65,9 @@
         ""
         "  invitation:"
         "   - email:               user's email address            (required)"
-        "   - role-groups:         role group IDs or names         (optional, comma-separated)"
+        "   - teams:               team assignments                 (optional, format: team_id:membership_type,...)"
+        "   - team-id:             single team ID                   (optional)"
+        "   - membership-type:     member or maintainer             (optional, default: member)"
         ""
         "Examples:"
         ""
@@ -84,8 +86,11 @@
         "# Invite user to organization"
         "  yaac create invitation MyOrg --email user@example.com"
         ""
-        "# Invite user with role groups"
-        "  yaac create invitation MyOrg --email user@example.com --role-groups Administrator"
+        "# Invite user with team assignment"
+        "  yaac create invitation MyOrg --email user@example.com --team-id abc123"
+        ""
+        "# Invite user with team as maintainer"
+        "  yaac create invitation MyOrg --email user@example.com --team-id abc123 --membership-type maintainer"
         ""
         ""]
        (str/join \newline)))
@@ -96,7 +101,9 @@
               ["-v" "--version VERSION" "Asset version"]
               ["-p" "--parent NAME" "Parent organization"]
               ["-e" "--email EMAIL" "Email address for user invitation"]
-              ["-r" "--role-groups ROLES" "Role group IDs or names (comma-separated)"]])
+              ["-t" "--teams TEAMS" "Team assignments (format: team_id:membership_type,...)"]
+              [nil "--team-id ID" "Single team ID for invitation"]
+              [nil "--membership-type TYPE" "Membership type (member or maintainer, default: member)"]])
 
 
 (defn create-organization [{:keys [parent
@@ -265,7 +272,7 @@
     (-create-api-policy org env api policy (dissoc opts :args))))
 
 
-(defn invite-user [{:keys [args email role-groups]
+(defn invite-user [{:keys [args email teams team-id membership-type]
                     [org] :args
                     :as opts}]
   "Invite a user to an organization
@@ -275,24 +282,40 @@
     --email    - Email address of user to invite
 
   Optional:
-    --role-groups - Comma-separated list of role group IDs or names
+    --teams         - Comma-separated list of team IDs (format: team_id:membership_type)
+    --team-id       - Single team ID (shortcut)
+    --membership-type - Membership type (member or maintainer, default: member)
 
   Example:
     yaac create invitation MyOrg --email user@example.com
-    yaac create invitation MyOrg --email user@example.com --role-groups Administrator"
+    yaac create invitation MyOrg --email user@example.com --team-id abc123
+    yaac create invitation MyOrg --email user@example.com --team-id abc123 --membership-type maintainer"
   (when-not email
     (throw (e/invalid-arguments "Email is required" :email email)))
   (let [org-id (org->id (or org *org*))
-        ;; Parse role-groups if provided (comma-separated)
-        role-group-ids (when role-groups
-                         (if (string? role-groups)
-                           (map str/trim (str/split role-groups #","))
-                           role-groups))
-        body (cond-> {:email email}
-               role-group-ids (assoc :role-group-ids role-group-ids))]
+        ;; Parse teams if provided
+        teams-list (cond
+                     ;; If teams string provided (format: "team_id1:member,team_id2:maintainer")
+                     teams
+                     (map (fn [team-str]
+                            (let [[tid mtype] (str/split team-str #":")]
+                              {:team-id (str/trim tid)
+                               :membership-type (or (some-> mtype str/trim) "member")}))
+                          (str/split teams #","))
+
+                     ;; If single team-id provided
+                     team-id
+                     [{:team-id team-id
+                       :membership-type (or membership-type "member")}]
+
+                     ;; No teams
+                     :else nil)
+        ;; Request body is an array of invitation objects
+        body [(cond-> {:email email}
+                teams-list (assoc :teams teams-list))]]
     (-> (http/post (format (gen-url "/accounts/api/organizations/%s/invites") org-id)
                    {:headers (default-headers)
-                    :body (edn->json :camel body)})
+                    :body (edn->json :snake body)})
         (parse-response)
         :body)))
 
