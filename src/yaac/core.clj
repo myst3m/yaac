@@ -246,7 +246,7 @@
         "  - private-space  [org] [env]            Get CloudHub 2.0 Private Spaces "
         "  - asset [org] key1=val1 key2=val2 ...   Get assets in Anypoint Exchange"
         "  - user [org]                            Get users that belong to the organization"
-        "  - team [org]                            Get teams in the organization"
+        "  - team                                  Get teams in the root organization"
         "  - connected-app                         Get connected applications"
         "  - runtime-target [org] [env]            Get runtime targets of RTF and CloudHub 2.0"
         "  - standalone-gateway [org] [env]        Get Standalone Gateway as Flex Gateway"        
@@ -865,7 +865,7 @@
 
 ;;; Teams
 
-(defn -get-teams [org]
+(defn -get-teams []
   ;; Teams API only works on root/master organization
   (let [{root-org-id :id} (-get-root-organization)]
     (-> (http/get (format (gen-url "/accounts/api/organizations/%s/teams") root-org-id)
@@ -876,21 +876,21 @@
 
 (def -get-teams (memoize-file -get-teams))
 
-(defn get-teams [{[org] :args :as opts}]
-  (-get-teams (or org *org*)))
+(defn get-teams [& _]
+  (-get-teams))
 
-(defn team->id [org id-or-name]
-  (let [teams (-get-teams org)
+(defn team->id [id-or-name]
+  (let [teams (-get-teams)
         team (first (filter #(or (= id-or-name (:id %))
                                  (= id-or-name (:team-id %))
                                  (= id-or-name (:team-name %)))
                             teams))]
     (or (:team-id team)
         (:id team)
-        (throw (e/team-not-found "Team not found" {:team id-or-name :org org})))))
+        (throw (e/team-not-found "Team not found" {:team id-or-name})))))
 
-(defn team->name [org id-or-name]
-  (let [teams (-get-teams org)]
+(defn team->name [id-or-name]
+  (let [teams (-get-teams)]
     (:team-name (first (filter #(or (= id-or-name (:id %))
                                     (= id-or-name (:team-id %))
                                     (= id-or-name (:team-name %)))
