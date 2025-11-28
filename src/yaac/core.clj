@@ -281,10 +281,10 @@
         ""
         "Metrics examples:"
         ""
-        "> get metrics MyOrg Production --type app-inbound --from 1h"
-        "> get metrics MyOrg Production --type app-inbound-response-time --from 30m --app-id <app-id>"
-        "> get metrics MyOrg Production --query 'from inbound.metrics select count() where app.id = \"<app-id>\"'"
-        "> get metrics MyOrg Production --describe app-inbound"
+        "> get metrics T1 Production --type app-inbound --from 1h"
+        "> get metrics T1 Production --type app-inbound-response-time --from 30m --app-id <app-id>"
+        "> get metrics T1 Production --query 'from inbound.metrics select count() where app.id = \"<app-id>\"'"
+        "> get metrics T1 Production --describe app-inbound"
         ""]
        (str/join \newline)))
 
