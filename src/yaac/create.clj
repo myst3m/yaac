@@ -300,13 +300,13 @@
                      teams
                      (map (fn [team-str]
                             (let [[tid mtype] (str/split team-str #":")]
-                              {:team-id (yc/team->id org-name (str/trim tid))
+                              {:team-id (yc/team->id (str/trim tid))
                                :membership-type (or (some-> mtype str/trim) "member")}))
                           (str/split teams #","))
 
                      ;; If single team-id provided (can be ID or name)
                      team-id
-                     [{:team-id (yc/team->id org-name team-id)
+                     [{:team-id (yc/team->id team-id)
                        :membership-type (or membership-type "member")}]
 
                      ;; No teams
