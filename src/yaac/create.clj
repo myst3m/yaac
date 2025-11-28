@@ -344,6 +344,6 @@
      ["|"
       ["policy|{*args}" {:handler create-api-policy}]]
      ["|" {:handler invite-user
-           :fields [:email :status]}
+           :fields [:invited-email :status]}
       ["invitation|{*args}"]
       ["invite|{*args}"]]]))
