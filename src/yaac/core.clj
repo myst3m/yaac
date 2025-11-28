@@ -862,6 +862,38 @@
   (:id (-get-user id-or-name)))
 
 
+;;; Teams
+
+(defn -get-teams [org]
+  (let [org-id (org->id org)]
+    (-> (http/get (format (gen-url "/accounts/api/organizations/%s/teams") org-id)
+                  {:headers (default-headers)})
+        (parse-response)
+        :body
+        :data)))
+
+(def -get-teams (memoize-file -get-teams))
+
+(defn get-teams [{[org] :args :as opts}]
+  (-get-teams (or org *org*)))
+
+(defn team->id [org id-or-name]
+  (let [teams (-get-teams org)
+        team (first (filter #(or (= id-or-name (:id %))
+                                 (= id-or-name (:team-id %))
+                                 (= id-or-name (:name %)))
+                            teams))]
+    (or (:team-id team)
+        (:id team)
+        (throw (e/team-not-found "Team not found" {:team id-or-name :org org})))))
+
+(defn team->name [org id-or-name]
+  (let [teams (-get-teams org)]
+    (:name (first (filter #(or (= id-or-name (:id %))
+                               (= id-or-name (:team-id %))
+                               (= id-or-name (:name %)))
+                          teams)))))
+
 
 (defn assets-fields [& {:keys [output-format fields]
                         :or {fields [:group-id :asset-id  :type :version :status]}}]
