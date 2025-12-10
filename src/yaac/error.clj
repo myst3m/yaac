@@ -27,6 +27,7 @@
 (deferror api-not-found 1003)
 (deferror target-not-found 1004)
 (deferror team-not-found 1005)
+(deferror connected-app-not-found 1006)
 
 (deferror multiple-app-name-found 1100)
 (deferror multiple-api-name-found 1101)

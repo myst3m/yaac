@@ -40,6 +40,7 @@
         " - api"
         " - policy"
         " - invitation"
+        " - connected-app"
         ""
         "Options:"
         ""
@@ -69,6 +70,14 @@
         "   - team-id:             single team ID or name           (optional)"
         "   - membership-type:     member or maintainer             (optional, default: member)"
         ""
+        "  connected-app:"
+        "   - name:                app name                         (required)"
+        "   - redirect-uris:       comma-separated redirect URIs    (required)"
+        "   - grant-types:         client_credentials|authorization_code (default: client_credentials)"
+        "   - scopes:              comma-separated scopes           (optional)"
+        "   - audience:            internal|everyone                (default: internal)"
+        "   - public:              true|false                       (default: false, for authorization_code)"
+        ""
         "Examples:"
         ""
         "# Create API instance "
@@ -92,6 +101,12 @@
         "# Invite user with team as maintainer"
         "  yaac create invite --email user@example.com --team-id abc123 --membership-type maintainer"
         ""
+        "# Create connected app with client_credentials grant"
+        "  yaac create connected-app --name MyApp --redirect-uris http://localhost:8080/callback"
+        ""
+        "# Create connected app with authorization_code grant"
+        "  yaac create connected-app --name MyApp --grant-types authorization_code --redirect-uris http://localhost:8080/callback"
+        ""
         ""]
        (str/join \newline)))
 
@@ -103,7 +118,13 @@
               ["-e" "--email EMAIL" "Email address for user invitation"]
               ["-t" "--teams TEAMS" "Team assignments (format: team_name_or_id:membership_type,...)"]
               [nil "--team-id ID_OR_NAME" "Single team ID or name for invitation"]
-              [nil "--membership-type TYPE" "Membership type (member or maintainer, default: member)"]])
+              [nil "--membership-type TYPE" "Membership type (member or maintainer, default: member)"]
+              ["-n" "--name NAME" "Connected app name"]
+              [nil "--grant-types TYPES" "Grant types (client_credentials or authorization_code)"]
+              [nil "--scopes SCOPES" "Comma-separated scopes"]
+              [nil "--redirect-uris URIS" "Comma-separated redirect URIs"]
+              [nil "--audience AUDIENCE" "Audience (internal or everyone)"]
+              [nil "--public" "Public client (for authorization_code)"]])
 
 
 (defn create-organization [{:keys [parent
@@ -319,6 +340,47 @@
         :body)))
 
 
+(defn create-connected-app [{:keys [name grant-types scopes redirect-uris audience public]
+                              :as opts}]
+  "Create a connected app in the root organization
+
+  Required:
+    --name           - Name of the connected app
+    --redirect-uris  - Comma-separated redirect URIs
+
+  Optional:
+    --grant-types    - Grant types: client_credentials or authorization_code (default: client_credentials)
+    --scopes         - Comma-separated scopes (e.g., profile,openid)
+    --audience       - Audience: internal or everyone (default: internal)
+    --public         - Public client flag for authorization_code (default: false)
+
+  Example:
+    yaac create connected-app --name MyApp --redirect-uris http://localhost:8080/callback
+    yaac create connected-app --name MyApp --grant-types authorization_code --redirect-uris http://localhost:8080/callback"
+  (when-not name
+    (throw (e/invalid-arguments "Name is required for connected-app" :name name)))
+  (when-not redirect-uris
+    (throw (e/invalid-arguments "redirect-uris is required for connected-app" :redirect-uris redirect-uris)))
+  (let [grant-type-list (if grant-types
+                          (str/split grant-types #",")
+                          ["client_credentials"])
+        scope-list (if scopes
+                     (str/split scopes #",")
+                     ["profile"])
+        redirect-uri-list (str/split redirect-uris #",")
+        audience-val (or audience "internal")
+        body (cond-> {:client_name name
+                      :grant_types grant-type-list
+                      :scopes scope-list
+                      :audience audience-val
+                      :redirect_uris redirect-uri-list}
+               public (assoc :public_client true))]
+    (-> (http/post (gen-url "/accounts/api/connectedApplications")
+                   {:headers (default-headers)
+                    :body (edn->json :snake body)})
+        (parse-response)
+        :body)))
+
 
 (def route
   (for [op ["c" "create"]]
@@ -346,4 +408,7 @@
      ["|" {:handler invite-user
            :fields [:invited-email :status]}
       ["invitation|{*args}"]
-      ["invite|{*args}"]]]))
+      ["invite|{*args}"]]
+     ["|" {:handler create-connected-app
+           :fields [:client-id :client-secret :client-name]}
+      ["connected-app|{*args}"]]]))

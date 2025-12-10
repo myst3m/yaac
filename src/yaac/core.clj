@@ -938,6 +938,25 @@
        :body
        :data))
 
+(defn connected-app->id
+  "Convert connected app name or client-id to client-id"
+  [name-or-id]
+  (let [apps (get-connected-applications nil)
+        app (first (filter #(or (= name-or-id (:client-id %))
+                                (= name-or-id (:client-name %)))
+                           apps))]
+    (or (:client-id app)
+        (throw (e/connected-app-not-found "Connected app not found" {:connected-app name-or-id})))))
+
+(defn get-connected-app-scopes
+  "Get scopes for a connected app by client-id"
+  [client-id]
+  (->> (http/get (format (gen-url "/accounts/api/connectedApplications/%s/scopes") client-id)
+                 {:headers (default-headers)})
+       (parse-response)
+       :body
+       :data))
+
 
 (defn -get-api-proxies [org env api]
   (let [org-id (org->id org)

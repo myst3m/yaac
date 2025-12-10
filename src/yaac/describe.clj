@@ -19,7 +19,7 @@
             [yaac.core :refer [*org* *env* *deploy-target* parse-response default-headers
                                add-extra-fields
                                org->id env->id app->id target->id
-                               org->name load-session! -get-deployed-applications
+                               org->name env->name load-session! -get-deployed-applications
                                gen-url] :as yc]
             [yaac.error :as e]
             [clojure.string :as str]
@@ -45,6 +45,7 @@
         "  - env [org] [env]               If org or env name is not specfied, it uses default org configred by yaac config"
         "  - app [org] [env] <app>         Required to specify group, artifact name and version."
         "  - asset -g <group> -a <asset>   Required to specify group, artifact name and version."
+        "  - connected-app <name|id>       Show connected app scopes by org/env."
         ""
         "Example:"
         "# Describe the organization"
@@ -55,6 +56,9 @@
         ""
         "# Describe specified asset"
         "  yaac describe asset -g T1 -a hello-api"
+        ""
+        "# Describe connected app scopes"
+        "  yaac describe connected-app c2"
         ""
         ""]
        (str/join \newline)))
@@ -160,11 +164,28 @@
                               [org env] :args}]
   (let [org-id (org->id (or org *org*))
         env-id (env->id org-id (or env *env*))]
-    
+
     (->> (http/get (format (gen-url "/accounts/api/organizations/%s/environments/%s") org-id env-id)
                    {:headers (default-headers)})
          (parse-response)
          :body)))
+
+(defn describe-connected-app [{:keys [args]
+                                [app-name-or-id] :args}]
+  (when-not app-name-or-id
+    (throw (e/invalid-arguments "Connected app name or client-id is required" :args args)))
+  (let [client-id (yc/connected-app->id app-name-or-id)
+        scopes (yc/get-connected-app-scopes client-id)]
+    ;; Resolve org-id to org-name. Env name resolution requires API call per org,
+    ;; which is too slow for many scopes, so we keep env-id as-is.
+    (map (fn [{:keys [scope context-params]}]
+           (let [org-id (:org context-params)
+                 env-id (:env-id context-params)
+                 org-name (when org-id (try (org->name org-id) (catch Exception _ org-id)))]
+             {:scope scope
+              :org org-name
+              :env env-id}))
+         scopes)))
 
 (def route
   (for [op ["desc" "describe"]]
@@ -198,5 +219,11 @@
      ["|asset|{*args}" {:handler describe-asset}]
      ["|api" {:help true}]
      ["|api|{*args}" {:handler describe-api-instance}]
+     ["|connected-app" {:help true}]
+     ["|connected-app|{*args}" {:fields [:scope :org :env]
+                                 :handler describe-connected-app}]
+     ["|capp" {:help true}]
+     ["|capp|{*args}" {:fields [:scope :org :env]
+                       :handler describe-connected-app}]
 
      ]))

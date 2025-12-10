@@ -53,6 +53,7 @@
         "  - app [org] [env] <app|id>                         Delete deployed application."
         "  - api [org] [env] <api|id>                         Delete deployed api instances."
         "  - idp-user <email> provider=<name>                 Delete IdP user profile."
+        "  - connected-app <name|client-id>                   Delete connected app."
         
         ""
         "Example:"
@@ -73,7 +74,10 @@
         "  > yaac delete app hello-api"
         ""
         "# Delete the IdP user profile"
-        "  > yaac delete idp-user my-external-user provider=openid-provider-localhost"        
+        "  > yaac delete idp-user my-external-user provider=openid-provider-localhost"
+        ""
+        "# Delete connected app by name"
+        "  > yaac delete connected-app MyApp"
         ""
         ""]
     (str/join \newline)))
@@ -237,6 +241,17 @@
                          id)
                  {:headers (default-headers)
                   :body (edn->json {:idp-user-id email :provider-id provider-id})})))
+
+
+(defn delete-connected-app [{:keys [args] :as opts}]
+  (let [[app-name-or-id] args]
+    (when-not app-name-or-id
+      (throw (e/invalid-arguments "Connected app name or client-id is required" :args args)))
+    (let [client-id (yc/connected-app->id app-name-or-id)]
+      (-> (http/delete (format (gen-url "/accounts/api/connectedApplications/%s") client-id)
+                       {:headers (default-headers)})
+          (parse-response)
+          (assoc :deleted-app app-name-or-id)))))
 (def route
   (for [op ["del" "delete"]]
     [op {:options options
@@ -264,4 +279,7 @@
                         :handler delete-asset}]
      ["|idp-user"]
      ["|idp-user|{*args}" {:fields [:status :body]
-                                   :handler delete-idp-user-profile}]]))
+                                   :handler delete-idp-user-profile}]
+     ["|connected-app"]
+     ["|connected-app|{*args}" {:fields [:status :deleted-app]
+                                :handler delete-connected-app}]]))
