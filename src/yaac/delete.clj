@@ -282,4 +282,7 @@
                                    :handler delete-idp-user-profile}]
      ["|connected-app"]
      ["|connected-app|{*args}" {:fields [:status :deleted-app]
-                                :handler delete-connected-app}]]))
+                                :handler delete-connected-app}]
+     ["|capp"]
+     ["|capp|{*args}" {:fields [:status :deleted-app]
+                       :handler delete-connected-app}]]))

@@ -175,16 +175,27 @@
   (when-not app-name-or-id
     (throw (e/invalid-arguments "Connected app name or client-id is required" :args args)))
   (let [client-id (yc/connected-app->id app-name-or-id)
-        scopes (yc/get-connected-app-scopes client-id)]
-    ;; Resolve org-id to org-name. Env name resolution requires API call per org,
-    ;; which is too slow for many scopes, so we keep env-id as-is.
+        scopes (yc/get-connected-app-scopes client-id)
+        ;; Collect unique org-ids and build env cache per org
+        org-ids (distinct (keep #(get-in % [:context-params :org]) scopes))
+        env-cache (into {}
+                        (for [oid org-ids]
+                          (let [org-nm (try (org->name oid) (catch Exception _ nil))]
+                            (when org-nm
+                              [oid (try
+                                     (->> (yc/-get-environments org-nm)
+                                          (map (fn [e] [(:id e) (:name e)]))
+                                          (into {}))
+                                     (catch Exception _ {}))]))))]
     (map (fn [{:keys [scope context-params]}]
            (let [org-id (:org context-params)
                  env-id (:env-id context-params)
-                 org-name (when org-id (try (org->name org-id) (catch Exception _ org-id)))]
+                 org-name (when org-id (try (org->name org-id) (catch Exception _ org-id)))
+                 env-name (when (and org-id env-id)
+                            (get-in env-cache [org-id env-id] env-id))]
              {:scope scope
               :org org-name
-              :env env-id}))
+              :env env-name}))
          scopes)))
 
 (def route

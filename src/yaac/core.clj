@@ -1694,6 +1694,8 @@
          :handler get-connected-applications}
     ["connected-app"]
     ["connected-app|{*args}"]
+    ["capp"]
+    ["capp|{*args}"]
     ["ca"]
     ["ca|{*args}"]]
    
