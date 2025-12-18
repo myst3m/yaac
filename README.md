@@ -31,16 +31,135 @@ of the command response. Therefore, I started to develop a CLI that is friendly 
 
 
 
-## Basic functions as of 2024/03/20
- - Login as a connected app (Client Credetials, Authroization code, Resource Owner Password)
- - Get Organizations
- - Get Envronments 
- - Get Applications on RTF and CloudHub 2.0
- - Get API Instances
- - Upload assets (Mule Application and RAML) to Exchange
- - Deploy applications to RTF/CloudHub2.0 
- - Delete assets on Exchange
- - Delete apps on Target (RTF, CloudHub 2.0)
+## Command Reference
+
+### login
+Login and save access token to local storage.
+```bash
+yaac login <credential-name>
+```
+
+### get
+List and retrieve resources.
+
+| Subcommand | Alias | Description |
+|------------|-------|-------------|
+| `get org` | `get organization` | List business groups |
+| `get env` | `get environment` | List environments |
+| `get app` | `get application` | List deployed applications (RTF/CH2.0/Hybrid) |
+| `get api` | `get api-instance` | List API instances |
+| `get asset` | - | List Exchange assets |
+| `get proxy` | - | List API proxies |
+| `get gw` | `get gateway` | List Flex Gateways (Standalone + Managed) |
+| `get rtf` | `get runtime-fabric` | List Runtime Fabrics |
+| `get rtt` | `get runtime-target` | List all runtime targets |
+| `get ps` | `get private-space` | List Private Spaces |
+| `get serv` | `get server` | List on-premise servers |
+| `get ent` | `get entitlement` | Get organization entitlements |
+| `get np` | `get node-port` | Get available node ports |
+| `get cont` | `get contract` | List API contracts |
+| `get capp` | `get connected-app` | List Connected Apps |
+| `get user` | - | List users |
+
+### create
+Create new resources.
+
+| Subcommand | Description |
+|------------|-------------|
+| `create org` | Create a business group |
+| `create env` | Create an environment |
+| `create api` | Create an API instance |
+| `create policy` | Apply API policy |
+| `create invite` | Invite a user to organization |
+| `create connected-app` | Create a Connected App |
+
+### delete
+Delete resources.
+
+| Subcommand | Alias | Description |
+|------------|-------|-------------|
+| `delete org` | `del org` | Delete a business group |
+| `delete app` | `del app` | Delete deployed application |
+| `delete api` | `del api` | Delete an API instance |
+| `delete asset` | `del asset` | Delete Exchange asset |
+| `delete cont` | `del contract` | Delete API contract |
+| `delete capp` | `del connected-app` | Delete Connected App |
+| `delete idp-user` | - | Delete IdP user profile |
+
+### deploy
+Deploy applications and proxies.
+
+| Subcommand | Alias | Description |
+|------------|-------|-------------|
+| `deploy app` | `dep app` | Deploy application to RTF/CH2.0 |
+| `deploy proxy` | `dep proxy` | Deploy API proxy to Flex Gateway |
+
+### upload
+Upload assets to Exchange.
+
+| Subcommand | Alias | Description |
+|------------|-------|-------------|
+| `upload asset` | `up asset` | Upload Mule app JAR or RAML to Exchange |
+
+### download
+Download resources.
+
+| Subcommand | Description |
+|------------|-------------|
+| `download proxy` | Download API proxy as JAR |
+| `download api` | Download API proxy as JAR |
+
+### describe
+Get detailed information about resources.
+
+| Subcommand | Alias | Description |
+|------------|-------|-------------|
+| `describe org` | `desc org` | Describe organization details |
+| `describe env` | `desc env` | Describe environment details |
+| `describe app` | `desc app` | Describe application details |
+| `describe asset` | `desc asset` | Describe Exchange asset |
+| `describe api` | `desc api` | Describe API instance |
+| `describe capp` | `desc connected-app` | Describe Connected App scopes |
+
+### update
+Update resource configurations.
+
+| Subcommand | Description |
+|------------|-------------|
+| `update app` | Update application configuration |
+| `update asset` | Update Exchange asset |
+| `update api` | Update API instance configuration |
+| `update org` | Update organization entitlements |
+| `update conn` | Update CloudHub 2.0 connection |
+
+### config
+Configure CLI settings.
+
+| Subcommand | Alias | Description |
+|------------|-------|-------------|
+| `config ctx` | `config context` | Set/show default org, env, target |
+| `config cred` | `config credential` | Configure Connected App credentials |
+| `config cc` | `config clear-cache` | Clear cached org/env data |
+
+### logs
+View application logs.
+
+| Subcommand | Description |
+|------------|-------------|
+| `logs app` | View application container logs |
+
+### auth
+External OAuth2 authentication.
+
+| Subcommand | Description |
+|------------|-------------|
+| `auth azure` | Azure AD OAuth2 authorization flow |
+
+### http
+Send HTTP requests to deployed applications.
+```bash
+yaac http <method> <url> [options]
+```
 
 
 ## Useful features
