@@ -85,8 +85,8 @@
 ;; This is deprecated because MFA is mandatory used. If MFA is exemplted, it can be used as of 2023/8/28
 (defmethod -login :user [_ & {:keys [username password base-url] :as cm}]
   (->> (http/post (gen-url "/accounts/login")
-                   {:form-params {:username username
-                                  :password password}})
+                   {:form-params {"username" username
+                                  "password" password}})
        ;; This API should be responded as json string "\"unauthorized\""  , but respond string "unauthorized" on error.
        ;; Therefore parse-response raised 
     parse-response

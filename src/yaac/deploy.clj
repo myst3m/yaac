@@ -25,9 +25,23 @@
             [clojure.string :as str]
             [clojure.tools.cli :refer [parse-opts]]
             [yaac.incubate :as ic]
-            [clojure.spec.alpha :as s]
+            [clojure.spec.alpha :as s]))
 
-            ))
+(defn deploy-to-flex-gateway
+  "Deploy API instance to Flex Gateway"
+  [org-id env-id api-id target-id]
+  (-> (http/post (format (gen-url "/proxies/xapi/v1/organizations/%s/environments/%s/apis/%s/deployments")
+                         org-id env-id api-id)
+                 {:headers (default-headers)
+                  :body (edn->json :camel
+                                   {:gateway-version "1.9.5"
+                                    :target-id target-id
+                                    :target-name "server"
+                                    :target-type "server"
+                                    :type "HY"
+                                    :environment-id env-id})})
+      (parse-response)
+      :body))
 
 (def deploy-available-options
   {:rtf {:assets [:cpu "request,limit ex. 450m,550m"
@@ -482,6 +496,7 @@
                                                      (#{:rtf :runtime-fabric} (keyword runtime-target)) ["RF" "runtime-fabric" cluster (yc/rtf->id org cluster)]
                                                      (#{:ch20 :cloudhub2} (keyword runtime-target)) ["CH2" "shared-space" (csk/->HTTP-Header-Case cluster) cluster]
                                                      (#{:hy :hybrid} (keyword runtime-target)) ["HY" "server" (str cluster) (str (yc/hybrid-server->id org env cluster))]
+                                                     (#{:fg :flex :flexgateway} (keyword runtime-target)) ["HY" "server" cluster (yc/gw->id org env cluster)]
                                                      :else (throw (e/not-implemented "Not implemented" {:args args :target target})))]
       
       (if-not (and org env target-id)

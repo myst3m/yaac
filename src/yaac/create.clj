@@ -18,8 +18,9 @@
             [reitit.core :as r]
             [yaac.core :refer [*org* *env* *deploy-target*
                                parse-response default-headers
-                               org->id ps->id env->id api->id app->id org->name load-session!
+                               org->id ps->id env->id api->id app->id org->name env->name gw->id load-session!
                                gen-url] :as yc]
+            [yaac.deploy :as deploy]
             [yaac.error :as e]
             [clojure.string :as str]
             [clojure.tools.cli :refer [parse-opts]]
@@ -55,9 +56,11 @@
         "   - type:               production|sandbox|design       (default: sandbox)"
         "  api:"
         "   - technology:         mule4|flexGateway               (default: mule4)"
-        "   - proxy-uri:          listen URL                      (defaul: http://0.0.0.0:8081)"
+        "   - endpoint-type:      rest|http                       (default: rest, flexGateway: http)"
+        "   - proxy-uri:          listen URL                      (default: http://0.0.0.0:8081)"
         "   - uri:                upstream URL"
-        "   - deployment-type:    deployment type ch20|rtf        (defaul: ch20)"
+        "   - deployment-type:    deployment type ch20|rtf        (default: ch20)"
+        "   - target:             deploy target fg:<gw-name>      (Flex Gateway only)"
         ""
         "  policy:"
         "   - ip-allowlist:"
@@ -85,6 +88,9 @@
         ""
         "# Create API instance in the given org/env"
         "  yaac create api T1 Production -g T1 -a account-api -v 0.0.1 technology=mule4 uri=https://httpbin.org proxy-uri=http://0.0.0.0:8081"
+        ""
+        "# Create API instance on Flex Gateway and deploy to gateway 'f1'"
+        "  yaac create api MuleSoft Production -g MuleSoft -a httpbin-api -v 1.0.0 technology=flexGateway uri=https://httpbin.org target=fg:f1"
         ""
         "# Create org named T1.1 in T1 with v-cores 0.1(Production), 0.3(Sandbox) and 0.0(Design)"
         "  yaac create org T1.1 --parent T1  v-cores=0.1:0.3:0.0"
@@ -188,14 +194,15 @@
 ;;   )
 
 
-(defn create-api-instance [{:keys [group asset version uri deployment-type proxy-uri label technology args]
+(defn create-api-instance [{:keys [group asset version uri deployment-type proxy-uri label technology endpoint-type target args]
                             [org env] :args
                             :as opts}]
 
   (log/debug "Upstream URI" uri)
   (log/debug "Proxy URI" (or proxy-uri "-"))
   (log/debug "Deployment type:" (or deployment-type "-"))
-        
+  (log/debug "Target:" (or target "-"))
+
   (let [org (or org *org*)
         env (or env *env*)]
     (if-not (and org env uri)
@@ -205,45 +212,54 @@
             dtype (deployment-targets (or (first deployment-type)
                                           (when *deploy-target* (keyword (first (str/split *deploy-target* #":"))))))
             technology (first technology)
+            target-spec (first target) ;; e.g., "fg:f1" or "flex:my-gateway"
             version version
             org-id (org->id org)
             env-id (env->id org-id env)
             group-id (org->id (or group org *org*))]
-        
+
       (log/debug "org:" org-id "env:" env-id "group:" group-id "deployment-type:" dtype)
-      
-        (->> (http/post (format (gen-url "/apimanager/api/v1/organizations/%s/environments/%s/apis") org-id env-id)
-                        {:headers (assoc (default-headers)
-                                         "X-ANYPNT-ORG-ID" org-id
-                                         "X-ANYPNT-ENV-ID" env-id)
-                         :body (cond-> {:technology (or technology "mule4"),
-                                        :instance-label (or label asset)
-                                        :spec {:group-id group-id,
-                                               :asset-id asset,
-                                               :version version}
-                                        :endpoint {:tls-contexts nil,
-                                                   :response-timeout nil,
-                                                   :type "rest",
-                                                   :deployment-type dtype
-                                                   ;; :references-user-domain false,
-                                                   ;; :mule-version-4-or-above true,
-                                                   :proxy-uri proxy-uri,
-                                                   :uri upstream-uri,
-                                                   ;; :validation "DISABLED",
-                                                   ;; :proxy-template nil,
-                                                   :is-cloud-hub nil
-                                                   }
-                                        :endpoint-uri nil}
-                                 (= technology "mule4") (-> (assoc-in [:endpoint :mule-version-4-or-above] true)
-                                                            (assoc-in [:endpoint :references-user-domain] false)
-                                                            (assoc-in [:endpoint :is-cloud-hub] false)
-                                                            (assoc-in [:endpoint :proxy-template] nil)
-                                                            (assoc-in [:endpoint :validation] "DISABLED"))
-                                 (= technology "flexGateway") (-> (assoc-in [:endpoint :deployment-type] "HY"))
-                                 true (->> (edn->json :camel)))
-                         })
-             (parse-response)
-             :body)))))
+
+        (let [api-result (->> (http/post (format (gen-url "/apimanager/api/v1/organizations/%s/environments/%s/apis") org-id env-id)
+                                         {:headers (assoc (default-headers)
+                                                          "X-ANYPNT-ORG-ID" org-id
+                                                          "X-ANYPNT-ENV-ID" env-id)
+                                          :body (cond-> {:technology (or technology "mule4"),
+                                                         :instance-label (or (first label) asset)
+                                                         :spec {:group-id group-id,
+                                                                :asset-id asset,
+                                                                :version version}
+                                                         :endpoint {:tls-contexts nil,
+                                                                    :response-timeout nil,
+                                                                    :type (or (first endpoint-type) "rest"),
+                                                                    :deployment-type dtype
+                                                                    :proxy-uri proxy-uri,
+                                                                    :uri upstream-uri,
+                                                                    :is-cloud-hub nil}
+                                                         :endpoint-uri nil}
+                                                  (= technology "mule4") (-> (assoc-in [:endpoint :mule-version-4-or-above] true)
+                                                                             (assoc-in [:endpoint :references-user-domain] false)
+                                                                             (assoc-in [:endpoint :is-cloud-hub] false)
+                                                                             (assoc-in [:endpoint :proxy-template] nil)
+                                                                             (assoc-in [:endpoint :validation] "DISABLED"))
+                                                  (= technology "flexGateway") (-> (assoc-in [:endpoint :deployment-type] "HY")
+                                                                                   (assoc-in [:endpoint :type] (or (first endpoint-type) "http")))
+                                                  true (->> (edn->json :camel)))})
+                             (parse-response)
+                             :body)]
+          ;; If target is specified and technology is flexGateway, deploy to the gateway
+          (if (and target-spec (= technology "flexGateway"))
+            (let [[target-type gw-name] (str/split target-spec #":")
+                  target-id (when (and gw-name (#{:fg :flex :flexgateway} (keyword target-type)))
+                              (gw->id org env gw-name))
+                  api-id (:id api-result)]
+              (if target-id
+                (do
+                  (log/debug "Deploying API" api-id "to Flex Gateway" gw-name "(" target-id ")")
+                  (deploy/deploy-to-flex-gateway org-id env-id api-id target-id)
+                  api-result)
+                api-result))
+            api-result))))))
 
 
 (defn- gen-policy-config [policy {:keys [ip-expression ips
@@ -254,37 +270,48 @@
   (condp = (keyword policy)
     :ip-allowlist {:ip-expression (or (first ip-expression) "#[attributes.headers['x-forwarded-for']]"),
                    :ips (or ips ["0.0.0.0/0"])}
-    :spike-control {:delay-attempts (or (first delay-attempts) 1)
-                    :maximum-requests (or (first maximum-requests) 1)
-                    :queuing-limit (or (first queuing-limit) 5)
+    :spike-control {:delay-attempts (or (some-> delay-attempts first parse-long) 1)
+                    :maximum-requests (or (some-> maximum-requests first parse-long) 1)
+                    :queuing-limit (or (some-> queuing-limit first parse-long) 5)
                     :expose-headers (or (= (first expose-headers) "true") false)
-                    :time-period-in-milliseconds (or (first time-period-in-milliseconds) 1000)
-                    :delay-time-in-millis (or (first delay-time-in-millis) 1000)}
-    :rate-limiting {:rate-limits [{:maximum-requests (or (first maximum-requests) 1)
-                                   :time-period-in-milliseconds (or (first time-period-in-milliseconds) 120000)}]}
+                    :time-period-in-milliseconds (or (some-> time-period-in-milliseconds first parse-long) 1000)
+                    :delay-time-in-millis (or (some-> delay-time-in-millis first parse-long) 1000)}
+    :rate-limiting {:rateLimits [{:maximumRequests (or (some-> maximum-requests first parse-long) 10)
+                                   :timePeriodInMilliseconds (or (some-> time-period-in-milliseconds first parse-long) 60000)}]
+                    :clusterizable true
+                    :exposeHeaders false}
     (throw (e/not-implemented "Given policy is not implemented" {:name policy}))))
 
 (defn -create-api-policy [org env api policy & [opts]]
   (let [org-id (org->id (or org *org*))
         env-id (env->id org-id (or env *env*))
         api-id (api->id org-id env-id api)
-        policies (->> (yc/get-assets {:types ["policy"] :args [yc/mule-business-group-id]})
-                      (filter #(re-find (re-pattern policy) (:asset-id %)) ))]
+        ;; Support full policy spec (groupId/assetId/version) or just policy name
+        [group-id asset-id version] (if (str/includes? policy "/")
+                                      (str/split policy #"/")
+                                      [nil policy nil])
+        ;; If full spec provided, use it directly; otherwise search
+        policy-info (if (and group-id asset-id version)
+                      {:group-id group-id :asset-id asset-id :version version}
+                      (let [policies (->> (yc/get-assets {:types ["policy"] :args [yc/mule-business-group-id]})
+                                          ;; Exact match for asset-id
+                                          (filter #(= policy (:asset-id %))))]
+                        (cond
+                          (= 0 (count policies)) (throw (e/no-item (str "No policy found: " policy)))
+                          (< 1 (count policies)) (throw (e/multiple-policies "Multiple policy found" {:extra policies}))
+                          :else (let [{:keys [asset-id version group-id]} (first policies)]
+                                  {:group-id group-id :asset-id asset-id :version version}))))]
 
-    (cond 
-      (= 0 (count policies)) (throw (e/no-item "No policy"))
-      (< 1 (count policies) ) (throw (e/multiple-policies "Multiple policy found" {:extra policies}))
-      :else
-      (let [[{:keys [asset-id version]}] policies]
-        (-> (http/post (format (gen-url "/apimanager/api/v1/organizations/%s/environments/%s/apis/%s/policies") org-id env-id api-id)
-                       {:headers (default-headers)
-                        :body (edn->json {:api-version-id api-id
-                                          :asset-id asset-id
-                                          :asset-version version
-                                          :configuration-data (gen-policy-config asset-id opts)
-                                          :groupId yc/mule-business-group-id})})
-            (parse-response)
-            :body)))))
+    (-> (http/post (format (gen-url "/apimanager/api/v1/organizations/%s/environments/%s/apis/%s/policies") org-id env-id api-id)
+                   {:headers (default-headers)
+                    :body (edn->json :camel
+                                     {:configuration-data (gen-policy-config (:asset-id policy-info) opts)
+                                      :pointcut-data nil
+                                      :asset-id (:asset-id policy-info)
+                                      :asset-version (:version policy-info)
+                                      :group-id (:group-id policy-info)})})
+        (parse-response)
+        :body)))
 
 (defn create-api-policy [{:keys [args]
                           [org env api policy] :args

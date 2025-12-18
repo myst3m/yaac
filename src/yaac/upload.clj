@@ -169,6 +169,39 @@
           (yc/add-extra-fields :group-name (org->name group-id))))
     (throw (e/invalid-arguments "group, asset, version and raml path are required"))))
 
+(defn upload-oas [{:keys [group asset version api-version]
+                   :or {api-version "v1"}
+                   [oas-path] :args
+                   :as opts}]
+  (if (and group asset version oas-path)
+    (let [group-id (org->id* group)
+          artifact-id asset
+          filename (last (str/split oas-path #"/"))
+          zip-path (str "/tmp/oas-" (rand-int 100000) ".zip")]
+      ;; Create a ZIP file containing the OAS spec
+      (with-open [zos (java.util.zip.ZipOutputStream. (io/output-stream zip-path))]
+        (.putNextEntry zos (java.util.zip.ZipEntry. filename))
+        (io/copy (io/file oas-path) zos)
+        (.closeEntry zos))
+      (-> (http/post (format (gen-url "/exchange/api/v2/organizations/%s/assets/%s/%s/%s") group-id group-id artifact-id version)
+                     {:headers {"Authorization" (str "Bearer " (:access-token yc/default-credential))
+                                "x-sync-publication" "true"
+                                "Content-Type" "multipart/form-data"}
+                      :multipart
+                      [{:name "name" :content asset}
+                       {:name "properties.apiVersion" :content api-version}
+                       {:name "properties.mainFile" :content filename}
+                       {:name "files.oas.zip" :content (io/file zip-path)
+                        :filename "oas.zip"}]})
+
+          (parse-response)
+          :body
+          (as-> result
+              (do (io/delete-file zip-path true)
+                  result))
+          (yc/add-extra-fields :group-name (org->name group-id))))
+    (throw (e/invalid-arguments "group, asset, version and oas path are required"))))
+
 ;; https://en.wikipedia.org/wiki/List_of_file_signatures
 
 (defn identify-file-type [file-path]
@@ -184,7 +217,9 @@
       
       (match (vec buf)
              [0x50 0x4B 0x03 0x04 & _] (if (jar? file-path) :JAR :ZIP)
-             [0x23 0x25 0x52 0x41 0x4d 0x4c & _] :RAML))))
+             [0x23 0x25 0x52 0x41 0x4d 0x4c & _] :RAML
+             ;; openapi: 3 (OAS3 YAML)
+             [0x6f 0x70 0x65 0x6e 0x61 0x70 0x69 0x3a & _] :OAS))))
 
 
 (defn upload-asset [{:keys [group asset version api-version asset-type]
@@ -198,7 +233,8 @@
       (case file-type
         :JAR (upload-jar opts)
         :RAML (upload-raml opts)
-        :else (throw (e/not-supported-file-type "No JAR/ZIP or RAML" {:file file-path}))))))
+        :OAS (upload-oas opts)
+        :else (throw (e/not-supported-file-type "No JAR/ZIP, RAML or OAS" {:file file-path}))))))
 
 (def route
   (for [op ["up" "upload"]]

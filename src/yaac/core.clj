@@ -26,9 +26,7 @@
             [silvur.util :refer [json->edn edn->json]]
             [silvur.log :as log]
             [silvur.http]
-            [org.httpkit.server :refer [run-server]]
             [clojure.data.json :as json]
-            ;; [org.httpkit.client :as hk]
             [yaac.util :as util]
             [yaac.error :as e]
             [clojure.data.xml :as dx]
@@ -656,6 +654,14 @@
     (if-not (and org env)
       (throw (e/invalid-arguments "Org and Env  need to be specified" {:args args}))
       (-get-standalone-gateways org env))))
+
+(defn gw->id
+  "Get Flex Gateway ID from name"
+  [org env gw-name]
+  (let [gws (-get-standalone-gateways org env)]
+    (or (->> gws (filter #(= (:name %) gw-name)) first :id)
+        (->> gws (filter #(= (:id %) gw-name)) first :id)
+        (throw (e/no-item (str "Gateway not found: " gw-name) {:gateways (map :name gws)})))))
 
 
 
