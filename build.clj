@@ -45,7 +45,7 @@
                                "-jar" uber-file
                                "-o" native-image-name
                                ;; GraalVM options
-                               "--features=clj_easy.graal_build_time.InitClojureClasses"
+                               "--features=clj_easy.graal_build_time.InitClojureClasses,zeph.graal.ForeignRegistrationFeature"
                                "--no-fallback"
                                "-H:+UnlockExperimentalVMOptions"
                                ;; FFM support for zeph io_uring
