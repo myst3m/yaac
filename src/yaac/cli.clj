@@ -40,7 +40,7 @@
             [malli.core :as m]
             [malli.error :as me]))
 
-(def version "0.7.3")
+(def version "0.7.4")
 
 ;;; main
 

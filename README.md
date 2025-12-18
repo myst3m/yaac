@@ -109,54 +109,47 @@ It is a bit patient for heavy CLI users (like me) , therefore it was necessary t
 
 
 ## Install
-If you are using GNU/Linux on x86-64 CPU, You can use [binary](https://github.com/myst3m/yaac/blob/main/dist/yaac-linux-x86-64) in dist folder in the tree.
 
-This software is developoed in Clojure. You can use clojure CLI to build standalone Jar.
-[https://clojure.org/guides/install_clojure]()
+### Prerequisites
+- Java 21+ with FFM (Foreign Function & Memory) support
+- Clojure CLI tools: [https://clojure.org/guides/install_clojure]()
 
-And build by this command.
-```
+### Build from source
+
+```bash
 $ git clone https://github.com/myst3m/yaac
 $ cd yaac
-$ clj -X:uberjar
+
+# Build uberjar
+$ clj -T:build uber
+
+# Run with Java
+$ java --enable-native-access=ALL-UNNAMED -jar target/yaac-0.7.4.jar
 ```
 
-And then you can build native image by using Graal native-image command.
-[https://www.graalvm.org/22.0/reference-manual/native-image/]()
+### Native Image (Recommended)
 
-I put this bash function to .bashrc . The native-image command is expected to be installed to /opt/graal/bin in this example.
+Build a native executable for faster startup (~15ms vs ~2s).
 
-```
-function ni ()
-{
-    /opt/graal/bin//native-image -jar $1 \
-                                 -O3 \
-                                 --initialize-at-run-time=com.mongodb.client.internal.Crypt,com.mongodb.internal.connection.UnixSocketChannelStream,com.mongodb.internal.connection.ZstdCompressor,com.mongodb.UnixServerAddress,com.mongodb.internal.connection.SnappyCompressor,java.sql.DriverManager \
-							     --trace-class-initialization=clojure.lang.Compile \
-								 -H:+BuildReport \
-                                 --initialize-at-build-time \
-                                 --diagnostics-mode \
-							     --report-unsupported-elements-at-runtime \
-				                 --gc=G1 \
-				                 -Ob \
-                                 --no-fallback \
-                                 -J-Xmx8g \
-				                 -march=native \
-                                 --enable-http \
-                                 --enable-https \
-                                 -J-Dclojure.compiler.direct-linking=true \
-                                 --report-unsupported-elements-at-runtime \
-                                 --trace-object-instantiation=java.lang.Thread \
-                                 -J-Dclojure.spec.skip-macros=true 
+**Requirements:**
+- GraalVM 25+ with native-image
+- Set `GRAALVM_HOME` environment variable (default: `/opt/graal`)
 
-}
-```
-And run
-```
-$ ni target/yaac-0.5.3-standalone.jar
+```bash
+# Build native image
+$ clj -T:build native-image
+
+# Install to ~/.local/bin
+$ cp target/yaac-0.7.4 ~/.local/bin/yaac
 ```
 
-You can find the native image named like yaac-x.y.z-standalone in the current directory. Rename the executable command to yaac.
+### Build Tasks
+
+| Task | Command | Description |
+|------|---------|-------------|
+| Clean | `clj -T:build clean` | Remove target directory |
+| Uberjar | `clj -T:build uber` | Build executable JAR |
+| Native | `clj -T:build native-image` | Build GraalVM native executable |
 
 
 ## Getting Started

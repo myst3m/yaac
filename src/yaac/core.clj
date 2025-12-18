@@ -636,32 +636,60 @@
                             :target #(target->name org-id env-id (get-in % [:target :target-id])))))))
 
 
-(defn -get-standalone-gateways [org env]
+;; --- Flex Gateway APIs ---
+;; Standalone: /standalone/api/v1/.../gateways (self-managed)
+;; Managed:    /gatewaymanager/api/v1/.../gateways (CloudHub 2.0 managed)
+
+(defn -get-standalone-gateways
+  "Get self-managed Flex Gateways from Standalone API"
+  [org env]
   (when (and org env)
     (let [org-id (org->id org)
           env-id (env->id org env)]
-      (-> (http/get (format (gen-url "/standalone/api/v1/organizations/%s/environments/%s/gateways")  org-id env-id)
-                    {:headers (default-headers)})
-          (parse-response)
-          :body
-          :content
-          (add-extra-fields :org org :env env
-                            :replicas #(count (:replicas %)))))))
+      (->> (http/get (format (gen-url "/standalone/api/v1/organizations/%s/environments/%s/gateways") org-id env-id)
+                     {:headers (default-headers)})
+           (parse-response)
+           :body
+           :content
+           (mapv #(assoc % :source "standalone" :extra {:org org :env env}))))))
 
-(defn get-standalone-gateways [{[org env] :args :as args}]
-  (let [org (or org *org*)           ;; If specified, use it
+(defn -get-managed-gateways
+  "Get managed Flex Gateways from Gateway Manager API (CloudHub 2.0)"
+  [org env]
+  (when (and org env)
+    (let [org-id (org->id org)
+          env-id (env->id org env)]
+      (->> (http/get (format (gen-url "/gatewaymanager/api/v1/organizations/%s/environments/%s/gateways") org-id env-id)
+                     {:headers (default-headers)})
+           (parse-response)
+           :body
+           :content
+           (mapv #(assoc % :source "managed" :extra {:org org :env env}))))))
+
+(defn -get-gateways
+  "Get all Flex Gateways (standalone + managed)"
+  [org env]
+  (let [standalone (or (-get-standalone-gateways org env) [])
+        managed (or (-get-managed-gateways org env) [])]
+    (into standalone managed)))
+
+(defn get-gateways
+  "Handler for getting all Flex Gateways"
+  [{[org env] :args :as args}]
+  (let [org (or org *org*)
         env (or env *env*)]
     (if-not (and org env)
-      (throw (e/invalid-arguments "Org and Env  need to be specified" {:args args}))
-      (-get-standalone-gateways org env))))
+      (throw (e/invalid-arguments "Org and Env need to be specified" {:args args}))
+      (-get-gateways org env))))
 
 (defn gw->id
-  "Get Flex Gateway ID from name"
+  "Get Flex Gateway ID from name. Searches both standalone and managed gateways."
   [org env gw-name]
-  (let [gws (-get-standalone-gateways org env)]
+  (let [gws (-get-gateways org env)]
     (or (->> gws (filter #(= (:name %) gw-name)) first :id)
         (->> gws (filter #(= (:id %) gw-name)) first :id)
-        (throw (e/no-item (str "Gateway not found: " gw-name) {:gateways (map :name gws)})))))
+        (throw (e/no-item (str "Gateway not found: " gw-name)
+                          {:gateways (map :name gws)})))))
 
 
 
@@ -1657,14 +1685,14 @@
     ["api-instance"]
     ["api-instance|{*args}"]]
 
-   ;; Standalone Gateways (Flex Gateway)
-   ["|" {:fields [:id [:extra :org] [:extra :env] :name :status [:extra :replicas]]
-         :handler get-standalone-gateways}
+   ;; All Flex Gateways (standalone + managed)
+   ["|" {:fields [:id [:extra :org] [:extra :env] :name :status :source]
+         :handler get-gateways}
     ["gw"]
     ["gw|{*args}"]
-    ["standalone-gateway"]
-    ["standalone-gateway|{*args}"]]
-   
+    ["gateway"]
+    ["gateway|{*args}"]]
+
    ;; Get enttitlements
    ["|" {:handler get-entitlements
          ;;:fields
