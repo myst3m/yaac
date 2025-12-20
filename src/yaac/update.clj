@@ -63,6 +63,8 @@
         "  connected-app"
         "    - --scopes              : basic scopes (profile,openid)"
         "    - --org-scopes          : org-level scopes (read:organization,edit:organization)"
+        "    - --env-scopes          : env-level scopes (read:applications,admin:cloudhub)"
+        "    - --env                 : environments for env-scopes (Production,Sandbox)"
         ""
         "Example:"
         ""
@@ -79,7 +81,7 @@
         "  > yaac update conn T1 t1ps onpremise static-routes=172.17.0.0/16"
         ""
         "# Update connected app scopes"
-        "  > yaac update connected-app myapp --scopes profile --org-scopes read:organization,edit:organization"
+        "  > yaac update connected-app myapp --scopes profile --org-scopes read:organization --env-scopes read:applications --env Production,Sandbox"
         ""]
        (str/join \newline)))
 
@@ -89,7 +91,9 @@
               ["-v" "--version VERSION" "Asset version"]
               [nil "--scopes SCOPES" "Comma-separated scopes for connected-app"]
               [nil "--org-scopes SCOPES" "Comma-separated org-level scopes for connected-app"]
-              [nil "--org ORG" "Organization for org-level scopes"]])
+              [nil "--env-scopes SCOPES" "Comma-separated env-level scopes for connected-app"]
+              [nil "--org ORG" "Organization for scopes"]
+              [nil "--env ENVS" "Comma-separated environments for env-level scopes"]])
 
 
 (defn update-asset-config [{:keys [group asset version labels]
@@ -232,28 +236,40 @@
                                     :routes (comp #(str/join "," %) :routes)))
       (throw (e/not-implemented "This type is not supported" {:type type :id id })))))
 
-(defn update-connected-app [{:keys [args scopes org-scopes org] :as opts}]
+(defn update-connected-app [{:keys [args scopes org-scopes env-scopes org env] :as opts}]
   "Update a connected app's scopes
 
   Usage:
-    yaac update connected-app <app-name-or-client-id> --scopes profile,openid --org-scopes read:organization
+    yaac update connected-app <app-name-or-client-id> --scopes profile --org-scopes read:organization --env-scopes read:applications --env Production,Sandbox
 
   Options:
     --scopes      - Comma-separated basic scopes (e.g., profile,openid)
     --org-scopes  - Comma-separated org-level scopes (e.g., read:organization,edit:organization)
-    --org         - Organization for org-level scopes (default: current org)"
+    --env-scopes  - Comma-separated env-level scopes (e.g., read:applications,admin:cloudhub)
+    --org         - Organization for scopes (default: current org)
+    --env         - Comma-separated environments for env-level scopes (e.g., Production,Sandbox)"
   (let [app-name (first args)
         _ (when-not app-name
             (throw (e/invalid-arguments "Connected app name or client-id is required" {:args args})))
         client-id (connected-app->id app-name)
-        org-id (when org-scopes (org->id (or org *org*)))
+        org-id (when (or org-scopes env-scopes) (org->id (or org *org*)))
         scope-list (when scopes (str/split scopes #","))
         org-scope-list (when org-scopes (str/split org-scopes #","))
-        all-scopes (concat (or scope-list []) (or org-scope-list []))]
+        env-scope-list (when env-scopes (str/split env-scopes #","))
+        env-list (when env (str/split env #","))
+        env-ids (when (and env-scopes env-list)
+                  (mapv #(yc/env->id org-id %) env-list))
+        all-scopes (concat (or scope-list []) (or org-scope-list []) (or env-scope-list []))]
     (when (empty? all-scopes)
-      (throw (e/invalid-arguments "At least one of --scopes or --org-scopes is required" {:scopes scopes :org-scopes org-scopes})))
+      (throw (e/invalid-arguments "At least one of --scopes, --org-scopes, or --env-scopes is required" opts)))
+    (when (and env-scopes (not env))
+      (throw (e/invalid-arguments "--env is required when using --env-scopes" {:env-scopes env-scopes})))
     (log/debug "Updating scopes for" client-id ":" all-scopes)
-    (assign-connected-app-scopes client-id all-scopes org-id)
+    (assign-connected-app-scopes client-id {:scopes scope-list
+                                            :org-scopes org-scope-list
+                                            :org-id org-id
+                                            :env-scopes env-scope-list
+                                            :env-ids env-ids})
     [{:extra {:client-id client-id
               :scopes (str/join "," all-scopes)}}]))
 

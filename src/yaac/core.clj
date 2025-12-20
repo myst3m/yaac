@@ -1008,17 +1008,33 @@
 
 (defn assign-connected-app-scopes
   "Assign scopes to a connected app.
-   scopes: vector of scope names like [\"profile\" \"read:organization\"]
-   org-id: organization ID for org-level scopes (optional)"
-  [client-id scopes & [org-id]]
-  (let [scope-objects (mapv (fn [scope]
-                              (if (and org-id (str/includes? scope ":org"))
-                                {:scope scope
-                                 :context_params {:org org-id}}
-                                {:scope scope
-                                 :context_params {}}))
-                            scopes)
-        body {:scopes scope-objects}]
+   client-id: the connected app's client ID
+   opts map with:
+     :scopes     - vector of basic scope names (no context needed)
+     :org-scopes - vector of org-level scope names
+     :org-id     - organization ID for org-level scopes
+     :env-scopes - vector of env-level scope names
+     :env-ids    - vector of environment IDs for env-level scopes"
+  [client-id {:keys [scopes org-scopes org-id env-scopes env-ids]}]
+  (let [;; Basic scopes with empty context
+        basic-scope-objects (mapv (fn [scope]
+                                    {:scope scope :context_params {}})
+                                  (or scopes []))
+        ;; Org-level scopes with org context
+        org-scope-objects (when (and org-id (seq org-scopes))
+                            (mapv (fn [scope]
+                                    {:scope scope :context_params {:org org-id}})
+                                  org-scopes))
+        ;; Env-level scopes with org+env context (one entry per env)
+        ;; Use string keys to preserve camelCase (edn->json :snake would convert envId to env_id)
+        env-scope-objects (when (and org-id (seq env-ids) (seq env-scopes))
+                            (for [env-id env-ids
+                                  scope env-scopes]
+                              {:scope scope :context_params {"org" org-id "envId" env-id}}))
+        all-scopes (concat basic-scope-objects
+                           (or org-scope-objects [])
+                           (or env-scope-objects []))
+        body {:scopes (vec all-scopes)}]
     (log/debug "Assigning scopes:" body)
     (-> (http/put (format (gen-url "/accounts/api/connectedApplications/%s/scopes") client-id)
                   {:headers (default-headers)

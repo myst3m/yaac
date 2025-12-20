@@ -367,7 +367,7 @@
         :body)))
 
 
-(defn create-connected-app [{:keys [name grant-types scopes redirect-uris audience public org-scopes org]
+(defn create-connected-app [{:keys [name grant-types scopes redirect-uris audience public org-scopes env-scopes org env]
                               :as opts}]
   "Create a connected app in the root organization
 
@@ -381,15 +381,19 @@
     --audience       - Audience: internal or everyone (default: internal)
     --public         - Public client flag for authorization_code (default: false)
     --org-scopes     - Comma-separated org-level scopes (e.g., read:organization,edit:organization)
-    --org            - Organization for org-level scopes (default: current org)
+    --env-scopes     - Comma-separated env-level scopes (e.g., read:applications,admin:cloudhub)
+    --org            - Organization for scopes (default: current org)
+    --env            - Comma-separated environments for env-level scopes (e.g., Production,Sandbox)
 
   Example:
     yaac create connected-app --name MyApp --redirect-uris http://localhost:8080/callback
-    yaac create connected-app --name MyApp --grant-types client_credentials --redirect-uris http://localhost --org-scopes read:organization,edit:organization"
+    yaac create connected-app --name MyApp --grant-types client_credentials --redirect-uris http://localhost --org-scopes read:organization --env-scopes read:applications --env Production"
   (when-not name
     (throw (e/invalid-arguments "Name is required for connected-app" :name name)))
   (when-not redirect-uris
     (throw (e/invalid-arguments "redirect-uris is required for connected-app" :redirect-uris redirect-uris)))
+  (when (and env-scopes (not env))
+    (throw (e/invalid-arguments "--env is required when using --env-scopes" {:env-scopes env-scopes})))
   (let [grant-type-list (if grant-types
                           (str/split grant-types #",")
                           ["client_credentials"])
@@ -409,13 +413,21 @@
                                :body (edn->json :snake body)})
                    (parse-response)
                    :body)]
-    ;; Assign org-level scopes if specified
-    (when org-scopes
+    ;; Assign org/env-level scopes if specified
+    (when (or org-scopes env-scopes)
       (let [org-id (org->id (or org *org*))
-            org-scope-list (str/split org-scopes #",")
-            all-scopes (concat scope-list org-scope-list)]
-        (log/debug "Assigning org-level scopes:" org-scope-list "to org:" org-id)
-        (assign-connected-app-scopes (:client_id result) all-scopes org-id)))
+            org-scope-list (when org-scopes (str/split org-scopes #","))
+            env-scope-list (when env-scopes (str/split env-scopes #","))
+            env-list (when env (str/split env #","))
+            env-ids (when (and env-scopes env-list)
+                      (mapv #(yc/env->id org-id %) env-list))]
+        (log/debug "Assigning scopes - org:" org-scope-list "env:" env-scope-list)
+        (assign-connected-app-scopes (:client_id result)
+                                     {:scopes scope-list
+                                      :org-scopes org-scope-list
+                                      :org-id org-id
+                                      :env-scopes env-scope-list
+                                      :env-ids env-ids})))
     result))
 
 

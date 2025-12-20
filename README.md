@@ -742,7 +742,7 @@ yaac update connected-app myapp --scopes profile --org-scopes read:organization 
 - Org-level scopes (containing `:org`) require `context_params` with the organization ID. The `--org-scopes` option automatically handles this.
 - `create:suborgs` cannot be assigned via API (invalid context parameter)
 - `openid`, `email`, `offline_access` are not available for `client_credentials` grant type
-- Environment-level scopes (`view:environment`, etc.) require `envId` context and are not yet supported
+- Environment-level scopes (`view:environment`, `read:applications`, `admin:cloudhub`, etc.) require assignment via Access Management UI - API assignment is not supported for these scopes
 
 ### View Connected App Scopes
 
