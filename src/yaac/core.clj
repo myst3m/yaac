@@ -1017,28 +1017,33 @@
      :env-ids    - vector of environment IDs for env-level scopes"
   [client-id {:keys [scopes org-scopes org-id env-scopes env-ids]}]
   (let [;; Basic scopes with empty context
+        ;; Use string keys to avoid snake_case conversion issues
         basic-scope-objects (mapv (fn [scope]
-                                    {:scope scope :context_params {}})
+                                    {"scope" scope "context_params" {}})
                                   (or scopes []))
         ;; Org-level scopes with org context
         org-scope-objects (when (and org-id (seq org-scopes))
                             (mapv (fn [scope]
-                                    {:scope scope :context_params {:org org-id}})
+                                    {"scope" scope "context_params" {"org" org-id}})
                                   org-scopes))
         ;; Env-level scopes with org+env context (one entry per env)
-        ;; Use string keys to preserve camelCase (edn->json :snake would convert envId to env_id)
+        ;; The API requires "envId" (camelCase) not "env_id"
         env-scope-objects (when (and org-id (seq env-ids) (seq env-scopes))
                             (for [env-id env-ids
                                   scope env-scopes]
-                              {:scope scope :context_params {"org" org-id "envId" env-id}}))
+                              {"scope" scope "context_params" {"org" org-id "envId" env-id}}))
         all-scopes (concat basic-scope-objects
                            (or org-scope-objects [])
                            (or env-scope-objects []))
-        body {:scopes (vec all-scopes)}]
+        body {"scopes" (vec all-scopes)}]
     (log/debug "Assigning scopes:" body)
-    (-> (http/put (format (gen-url "/accounts/api/connectedApplications/%s/scopes") client-id)
-                  {:headers (default-headers)
-                   :body (edn->json :snake body)})
+    ;; Use PATCH to /organizations/{org}/connectedApplications/{client}/scopes
+    ;; Use json/write-str directly to preserve exact key names:
+    ;; - "context_params" must stay snake_case (not contextParams)
+    ;; - "envId" must stay camelCase (not env_id)
+    (-> (http/patch (format (gen-url "/accounts/api/organizations/%s/connectedApplications/%s/scopes") org-id client-id)
+                    {:headers (default-headers)
+                     :body (json/write-str body)})
         (parse-response)
         :body)))
 
