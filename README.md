@@ -164,10 +164,11 @@ yaac http <method> <url> [options]
 
 ## Useful features
  - 5x faster ! than Anypoint CLI (thanks to Graal, and by caching and parallel API calls)
+ - HTTP/2 support for faster API communication with Anypoint Platform
  - Output is inspired from kubectl so as to be friendly with other UNIX tools
  - Selectable output format (JSON/YAML/EDN/short)
  - Organizations and Environments meta info are cached in a local file to make better performance
- - HTTP tracing for API calls
+ - HTTP tracing for API calls (with protocol version display)
  - Deploy and delete multiple Mule applications at one time by specifiying labels or a query option.
 
 
@@ -524,22 +525,22 @@ Cloudhub-CA-Central-1    shared-space    cloudhub-ca-central-1                 c
 ### HTTP Trace (Lite)
 
 If you add "-V" option, you can see the flow of HTTP request and response.
+The trace output shows the protocol version (HTTP/1.1 or HTTP/2) being used.
 
 ```bash
-$ yaac get env T1 Production -V
+$ yaac get org -V
 ```
 
 ```
-===> GET https://anypoint.mulesoft.com/accounts/api/me
-<=== 200 OK
-===> GET https://anypoint.mulesoft.com/accounts/api/organizations/fe1db8fb-xxxx-4b5c-a591-06fea582f980/environments
-<=== 200 OK
-
-NAME        ID                                    TYPE        
-Design      bf2bc9ac-69eb-xxxx-xxxx-eb03aa158945  design      
-Production  0d0debc2-8327-xxxx-xxxx-7911421cc2c5  production  
-Sandbox     0f678523-c036-xxxx-xxxx-cc542dca2e6d  sandbox     
+===> [0657] GET https://anypoint.mulesoft.com/accounts/api/me
+<=== [0657] HTTP/2 200 OK 307ms
+NAME      ID                                    PARENT-NAME
+MuleSoft  376ce256-2049-4401-a983-d3cb09689ee0  -
+A1        9e8908b2-d4e2-48ec-bf2c-bd5d2dd5a0fd  MuleSoft
+T1        fe1db8fb-8261-4b5c-a591-06fea582f980  MuleSoft
 ```
+
+yaac uses HTTP/2 by default when connecting to Anypoint Platform, which provides faster response times compared to HTTP/1.1.
 
 ### HTTP Trace (Detail)
 
