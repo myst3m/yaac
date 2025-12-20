@@ -724,6 +724,12 @@ yaac create connected-app --name myapp --grant-types authorization_code --scopes
 # Create with org-level scopes (automatically assigns to current org)
 yaac create connected-app --name myapp --grant-types client_credentials --redirect-uris http://localhost \
   --scopes profile --org-scopes read:organization,edit:organization,read:orgenvironments
+
+# Create with env-level scopes for specific environments
+yaac create connected-app --name myapp --grant-types client_credentials --redirect-uris http://localhost \
+  --scopes profile \
+  --env-scopes read:applications,create:applications \
+  --org MyOrg --env "Production,Sandbox"
 ```
 
 ### Update Connected App Scopes
@@ -731,18 +737,38 @@ yaac create connected-app --name myapp --grant-types client_credentials --redire
 Use `update connected-app` to assign or update scopes:
 
 ```bash
-# Update scopes for an existing connected app
-yaac update connected-app myapp --scopes profile --org-scopes read:organization,edit:organization
+# Update basic scopes for an existing connected app
+yaac update connected-app myapp --scopes profile
 
-# Specify organization for org-level scopes
-yaac update connected-app myapp --scopes profile --org-scopes read:organization --org MyOrg
+# Assign org-level scopes (require organization context)
+yaac update connected-app myapp --org-scopes read:organization,edit:organization --org MyOrg
+
+# Assign environment-level scopes to specific environments
+yaac update connected-app myapp --env-scopes read:applications --org MyOrg --env Production
+
+# Assign env-level scopes to multiple environments
+yaac update connected-app myapp --env-scopes read:applications,create:applications --org MyOrg --env "Production,Sandbox"
+
+# Combine all scope types
+yaac update connected-app myapp \
+  --scopes profile \
+  --org-scopes read:organization,read:orgenvironments \
+  --env-scopes read:applications,delete:applications \
+  --org MyOrg \
+  --env "Production,Sandbox"
 ```
 
+**Scope Types:**
+- `--scopes` - Basic scopes with no context (e.g., `profile`, `openid`)
+- `--org-scopes` - Organization-level scopes (e.g., `read:organization`, `edit:organization`)
+- `--env-scopes` - Environment-level scopes (e.g., `read:applications`, `create:applications`)
+
 **Notes:**
-- Org-level scopes (containing `:org`) require `context_params` with the organization ID. The `--org-scopes` option automatically handles this.
+- Org-level scopes require `--org` to specify the organization
+- Env-level scopes require both `--org` and `--env` options
+- `--env` accepts comma-separated environment names for bulk assignment
 - `create:suborgs` cannot be assigned via API (invalid context parameter)
 - `openid`, `email`, `offline_access` are not available for `client_credentials` grant type
-- Environment-level scopes (`view:environment`, `read:applications`, `admin:cloudhub`, etc.) require assignment via Access Management UI - API assignment is not supported for these scopes
 
 ### View Connected App Scopes
 
