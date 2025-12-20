@@ -779,8 +779,8 @@ yaac update connected-app myapp \
 - `--env-scopes` - Environment-level scopes (e.g., `read:applications`, `create:applications`)
 
 **Notes:**
-- Org-level scopes require `--org` to specify the organization
-- Env-level scopes require both `--org` and `--env` options
+- `--org-scopes` requires `--org` to specify the target organization
+- `--env-scopes` requires both `--org` and `--env` options
 - `--env` accepts comma-separated environment names for bulk assignment
 - `create:suborgs` cannot be assigned via API (invalid context parameter)
 - `openid`, `email`, `offline_access` are not available for `client_credentials` grant type
