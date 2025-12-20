@@ -996,6 +996,46 @@
        :body
        :data))
 
+(defn- classify-scope
+  "Classify a scope as basic, org, or env based on naming patterns"
+  [scope]
+  (cond
+    ;; Basic scopes - no context needed
+    (contains? #{"full" "read:full" "profile" "openid" "email" "offline_access"} scope)
+    "basic"
+
+    ;; Env-level scopes - require org + envId
+    (or (re-find #"applications" scope)
+        (re-find #"cloudhub" scope)
+        (re-find #"runtime" scope)
+        (re-find #"servers" scope)
+        (re-find #"alerts" scope)
+        (re-find #"flows" scope)
+        (re-find #"queues" scope)
+        (re-find #"schedules" scope)
+        (re-find #"tenants" scope)
+        (re-find #"data$" scope))
+    "env"
+
+    ;; Org-level scopes - require org context
+    (or (re-find #"org" scope)
+        (re-find #"organization" scope)
+        (re-find #"suborg" scope)
+        (re-find #"users" scope)
+        (re-find #"roles" scope)
+        (re-find #"teams" scope)
+        (re-find #"invites" scope)
+        (re-find #"clients" scope)
+        (re-find #"providers" scope)
+        (re-find #"exchange" scope)
+        (re-find #"portals" scope)
+        (re-find #"api" scope)
+        (re-find #"assets" scope))
+    "org"
+
+    ;; Default to org for unknown scopes
+    :else "org"))
+
 (defn get-available-scopes
   "Get available scopes from OpenID Connect discovery endpoint"
   [_]
@@ -1004,7 +1044,7 @@
       (parse-response)
       :body
       :scopes-supported
-      (->> (map #(hash-map :scope %)))))
+      (->> (map #(hash-map :scope % :type (classify-scope %))))))
 
 (defn assign-connected-app-scopes
   "Assign scopes to a connected app.
@@ -1790,7 +1830,7 @@
     ["ca|{*args}"]]
 
    ;; Get available scopes
-   ["|" {:fields [:scope]
+   ["|" {:fields [:scope :type]
          :handler get-available-scopes
          :no-token true}
     ["scope"]
