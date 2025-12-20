@@ -19,6 +19,7 @@
             [yaac.error :as e]
             [taoensso.timbre :as timbre]
             [silvur.http :as http]
+            [zeph.client :as zeph-client]
             [clojure.data.json :as json]
             [yaac.deploy :as dep]
             [yaac.delete :as del]
@@ -40,7 +41,7 @@
             [malli.core :as m]
             [malli.error :as me]))
 
-(def version "0.7.4")
+(def version "0.7.5")
 
 ;;; main
 
@@ -136,6 +137,8 @@
                          ["-X" "--http-trace-detail" "Show HTTP request and response details"
                           :default false]
                          ["-Z" "--no-cache" "Not using cache"
+                          :default false]
+                         ["-1" "--http1" "Force HTTP/1.1 (disable HTTP/2)"
                           :default false]
                          ["-h" "--help" "This help"]])
 
@@ -337,6 +340,7 @@
                   *deploy-target* (:deploy-target default-context)
                   *no-cache* (:no-cache options)
                   *no-multi-thread* (:http-trace-detail options)
+                  zeph-client/*force-http1* (:http1 options)
                   *console* (async/chan)]
           (log/debug "default:" *org* *env*)
           (log/debug "Args: " args)

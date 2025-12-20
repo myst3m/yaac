@@ -39,7 +39,7 @@
 (def ^:dynamic *org*)
 (def ^:dynamic *env*)
 (def ^:dynamic *deploy-target*)
-(def ^:dynamic *no-cache*)
+(def ^:dynamic *no-cache* false)
 (def ^:dynamic *no-multi-thread*)
 (def ^:dynamic *console*)
 (def mule-business-group-id "68ef9520-24e9-4cf2-b2f5-620025690913")
@@ -61,24 +61,29 @@
 (defn memoize-file [f]
   (let [memo-file (io/file (System/getenv "HOME") ".yaac" "cache")
         memo-key (str/replace (str f) #"@.*" "")]
-    (letfn [(store-cache [f cache-map & args]
+    (letfn [(store-cache [f & args]
               (let [ret (apply f args)]
                 (io/make-parents memo-file)
-                (spit memo-file (assoc-in cache-map [memo-key args] ret))
+                ;; Read current cache and merge to avoid race condition overwrites
+                (let [current-cache (if (.exists memo-file)
+                                      (try (read-string (slurp memo-file))
+                                           (catch Exception _ {}))
+                                      {})]
+                  (spit memo-file (assoc-in current-cache [memo-key args] ret)))
                 ret))]
       (memoize
        (fn [& args]
          (if (true? *no-cache*)
            (apply f args)
-           (if (and (.exists memo-file) (false? *no-cache*))
+           (if (and (.exists memo-file) (not *no-cache*))
              (let [cache (read-string (slurp memo-file))]
                (log/debug "cache file:" (str memo-file))
                (if-let [cached-ret (get-in cache [memo-key args])]
                  (do (log/debug "cache hit:" memo-key)
                      cached-ret)
                  (do (log/debug "cache miss:" memo-key)
-                     (apply store-cache f cache args))))
-             (apply store-cache f {} args))))))))
+                     (apply store-cache f args))))
+             (apply store-cache f args))))))))
 
 (defmacro on-threads [no-multi-thread? & body]
   (let [xs (->> body (mapv #(list 'go (list 'try % (list 'catch 'Exception 'e [(list 'assoc (list 'ex-data 'e) :error true)])))))]
@@ -796,6 +801,9 @@
 
 
 
+(def -get-servers (memoize-file -get-servers))
+(def -get-runtime-cloud-targets (memoize-file -get-runtime-cloud-targets))
+
 (defn api->id [org env api]
   (let [apis (-get-api-instances org env api)]
     (cond
@@ -951,9 +959,6 @@
     (-get-servers org env)
     (-get-runtime-cloud-targets org)))
 
-
-(def -get-runtime-cloud-targets (memoize-file -get-runtime-cloud-targets))
-(def -get-servers (memoize-file -get-servers))
 
 (defn get-runtime-targets [{[org env] :args}]
   (let [org (or org *org*)
