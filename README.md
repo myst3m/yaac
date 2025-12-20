@@ -250,6 +250,21 @@ $ clj -T:build uber
 $ java --enable-native-access=ALL-UNNAMED -jar target/yaac-0.7.4.jar
 ```
 
+### Bash Completion
+
+Enable tab completion for yaac commands and options:
+
+```bash
+# Install to user's bash completion directory
+mkdir -p ~/.local/share/bash-completion/completions
+cp completions/yaac.bash ~/.local/share/bash-completion/completions/yaac
+
+# Or source directly in your ~/.bashrc
+echo 'source /path/to/yaac/completions/yaac.bash' >> ~/.bashrc
+```
+
+After installation, restart your shell or run `source ~/.bashrc`.
+
 ### Native Image (Recommended)
 
 Build a native executable for faster startup (~15ms vs ~2s).
