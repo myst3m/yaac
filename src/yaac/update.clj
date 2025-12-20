@@ -16,7 +16,7 @@
              [http :as http]
              [log :as log]]
             [reitit.core :as r]
-            [yaac.core :refer [*org* *env* parse-response default-headers org->id env->id api->id org->name ps->id conn->id load-session! gen-url] :as yc]
+            [yaac.core :refer [*org* *env* parse-response default-headers org->id env->id api->id org->name ps->id conn->id load-session! gen-url assign-connected-app-scopes connected-app->id] :as yc]
             [yaac.error :as e]
             [clojure.string :as str]
             [clojure.tools.cli :refer [parse-opts]]
@@ -39,7 +39,8 @@
         "  - asset -g <group> -a <asset> key=val ...                    "
         "  - api [org] [env] <api> key=val       ...                    "
         "  - org [org] key=val                   ...                    "
-        "  - conn [org] <private-space> <connection> ... key=val  " 
+        "  - conn [org] <private-space> <connection> ... key=val  "
+        "  - connected-app <name-or-client-id> --scopes ... --org-scopes ..."
         ""
         "Keys:"
         "  app"
@@ -59,6 +60,9 @@
         "    - vpns"
         "  conn|connection"
         "    - static-routes         : ex. +172.17.0.0/16,+192.168.11.0/24"
+        "  connected-app"
+        "    - --scopes              : basic scopes (profile,openid)"
+        "    - --org-scopes          : org-level scopes (read:organization,edit:organization)"
         ""
         "Example:"
         ""
@@ -73,13 +77,19 @@
         ""
         "# Update static routes on connections in a private space"
         "  > yaac update conn T1 t1ps onpremise static-routes=172.17.0.0/16"
+        ""
+        "# Update connected app scopes"
+        "  > yaac update connected-app myapp --scopes profile --org-scopes read:organization,edit:organization"
         ""]
        (str/join \newline)))
 
 
 (def options [["-g" "--group NAME" "Group name. Normally BG name"]
               ["-a" "--asset NAME" "Asset name"]
-              ["-v" "--version VERSION" "Asset version"]])
+              ["-v" "--version VERSION" "Asset version"]
+              [nil "--scopes SCOPES" "Comma-separated scopes for connected-app"]
+              [nil "--org-scopes SCOPES" "Comma-separated org-level scopes for connected-app"]
+              [nil "--org ORG" "Organization for org-level scopes"]])
 
 
 (defn update-asset-config [{:keys [group asset version labels]
@@ -222,6 +232,31 @@
                                     :routes (comp #(str/join "," %) :routes)))
       (throw (e/not-implemented "This type is not supported" {:type type :id id })))))
 
+(defn update-connected-app [{:keys [args scopes org-scopes org] :as opts}]
+  "Update a connected app's scopes
+
+  Usage:
+    yaac update connected-app <app-name-or-client-id> --scopes profile,openid --org-scopes read:organization
+
+  Options:
+    --scopes      - Comma-separated basic scopes (e.g., profile,openid)
+    --org-scopes  - Comma-separated org-level scopes (e.g., read:organization,edit:organization)
+    --org         - Organization for org-level scopes (default: current org)"
+  (let [app-name (first args)
+        _ (when-not app-name
+            (throw (e/invalid-arguments "Connected app name or client-id is required" {:args args})))
+        client-id (connected-app->id app-name)
+        org-id (when org-scopes (org->id (or org *org*)))
+        scope-list (when scopes (str/split scopes #","))
+        org-scope-list (when org-scopes (str/split org-scopes #","))
+        all-scopes (concat (or scope-list []) (or org-scope-list []))]
+    (when (empty? all-scopes)
+      (throw (e/invalid-arguments "At least one of --scopes or --org-scopes is required" {:scopes scopes :org-scopes org-scopes})))
+    (log/debug "Updating scopes for" client-id ":" all-scopes)
+    (assign-connected-app-scopes client-id all-scopes org-id)
+    [{:extra {:client-id client-id
+              :scopes (str/join "," all-scopes)}}]))
+
 (def route
   ["update" {:options options
              :usage usage}
@@ -252,4 +287,7 @@
    ["|connection" {:help true}]
    ["|conn" {:help true}]
    ["|connection|{*args}" {:handler update-cloudhub20-connection}]
-   ["|conn|{*args}" {:handler update-cloudhub20-connection}]])
+   ["|conn|{*args}" {:handler update-cloudhub20-connection}]
+   ["|connected-app" {:help true}]
+   ["|connected-app|{*args}" {:fields [[:extra :client-id] [:extra :scopes]]
+                              :handler update-connected-app}]])

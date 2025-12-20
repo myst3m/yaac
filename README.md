@@ -11,6 +11,7 @@
 - [Features](#features)
 - [Getting Started](#getting-started)
 - [Usage](#usage)
+- [Connected Apps](#connected-apps)
 - [Contributing](#contributing)
 - [License](#license)
 - [Acknowledgements](#acknowledgements)
@@ -59,6 +60,7 @@ List and retrieve resources.
 | `get np` | `get node-port` | Get available node ports |
 | `get cont` | `get contract` | List API contracts |
 | `get capp` | `get connected-app` | List Connected Apps |
+| `get scopes` | `get scope` | List available OAuth scopes |
 | `get user` | - | List users |
 
 ### create
@@ -131,6 +133,7 @@ Update resource configurations.
 | `update api` | Update API instance configuration |
 | `update org` | Update organization entitlements |
 | `update conn` | Update CloudHub 2.0 connection |
+| `update connected-app` | Update Connected App scopes |
 
 ### config
 Configure CLI settings.
@@ -686,6 +689,72 @@ T1        fe1db8fb-xxxx-4b5c-a591-06fea582f980  MuleSoft     anypoint
 The organization list (/accounts/getme) and Enrironment list (/accounts/api/organizations/<org>/environments) is
 cached to ~/.yaac/cache.
 Option "-Z" disables to use the cache
+
+## Connected Apps
+
+Connected Apps enable secure OAuth 2.0 authentication for accessing Anypoint Platform APIs.
+
+### Available Scopes
+
+Get the list of all available scopes:
+
+```bash
+yaac get scopes
+```
+
+Common scopes include:
+- `full` - Full access
+- `read:full` - Read-only full access
+- `profile` - Basic profile access
+- `read:organization` - Read organization info
+- `edit:organization` - Edit organization
+- `read:orgenvironments` - Read environments
+- `read:applications` - Read applications
+- `manage:exchange` - Manage Exchange assets
+
+### Create a Connected App
+
+```bash
+# Create a connected app with client_credentials grant
+yaac create connected-app --name myapp --grant-types client_credentials --scopes profile --redirect-uris http://localhost
+
+# Create with authorization_code grant
+yaac create connected-app --name myapp --grant-types authorization_code --scopes full --redirect-uris http://localhost:8080/callback
+
+# Create with org-level scopes (automatically assigns to current org)
+yaac create connected-app --name myapp --grant-types client_credentials --redirect-uris http://localhost \
+  --scopes profile --org-scopes read:organization,edit:organization,read:orgenvironments
+```
+
+### Update Connected App Scopes
+
+Use `update connected-app` to assign or update scopes:
+
+```bash
+# Update scopes for an existing connected app
+yaac update connected-app myapp --scopes profile --org-scopes read:organization,edit:organization
+
+# Specify organization for org-level scopes
+yaac update connected-app myapp --scopes profile --org-scopes read:organization --org MyOrg
+```
+
+**Notes:**
+- Org-level scopes (containing `:org`) require `context_params` with the organization ID. The `--org-scopes` option automatically handles this.
+- `create:suborgs` cannot be assigned via API (invalid context parameter)
+- `openid`, `email`, `offline_access` are not available for `client_credentials` grant type
+- Environment-level scopes (`view:environment`, etc.) require `envId` context and are not yet supported
+
+### View Connected App Scopes
+
+```bash
+yaac describe connected-app myapp
+```
+
+### Delete a Connected App
+
+```bash
+yaac delete connected-app myapp
+```
 
 ## Todo
 

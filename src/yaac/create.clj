@@ -19,7 +19,7 @@
             [yaac.core :refer [*org* *env* *deploy-target*
                                parse-response default-headers
                                org->id ps->id env->id api->id app->id org->name env->name gw->id load-session!
-                               gen-url] :as yc]
+                               gen-url assign-connected-app-scopes] :as yc]
             [yaac.deploy :as deploy]
             [yaac.error :as e]
             [clojure.string :as str]
@@ -367,7 +367,7 @@
         :body)))
 
 
-(defn create-connected-app [{:keys [name grant-types scopes redirect-uris audience public]
+(defn create-connected-app [{:keys [name grant-types scopes redirect-uris audience public org-scopes org]
                               :as opts}]
   "Create a connected app in the root organization
 
@@ -380,10 +380,12 @@
     --scopes         - Comma-separated scopes (e.g., profile,openid)
     --audience       - Audience: internal or everyone (default: internal)
     --public         - Public client flag for authorization_code (default: false)
+    --org-scopes     - Comma-separated org-level scopes (e.g., read:organization,edit:organization)
+    --org            - Organization for org-level scopes (default: current org)
 
   Example:
     yaac create connected-app --name MyApp --redirect-uris http://localhost:8080/callback
-    yaac create connected-app --name MyApp --grant-types authorization_code --redirect-uris http://localhost:8080/callback"
+    yaac create connected-app --name MyApp --grant-types client_credentials --redirect-uris http://localhost --org-scopes read:organization,edit:organization"
   (when-not name
     (throw (e/invalid-arguments "Name is required for connected-app" :name name)))
   (when-not redirect-uris
@@ -401,12 +403,20 @@
                       :scopes scope-list
                       :audience audience-val
                       :redirect_uris redirect-uri-list}
-               public (assoc :public_client true))]
-    (-> (http/post (gen-url "/accounts/api/connectedApplications")
-                   {:headers (default-headers)
-                    :body (edn->json :snake body)})
-        (parse-response)
-        :body)))
+               public (assoc :public_client true))
+        result (-> (http/post (gen-url "/accounts/api/connectedApplications")
+                              {:headers (default-headers)
+                               :body (edn->json :snake body)})
+                   (parse-response)
+                   :body)]
+    ;; Assign org-level scopes if specified
+    (when org-scopes
+      (let [org-id (org->id (or org *org*))
+            org-scope-list (str/split org-scopes #",")
+            all-scopes (concat scope-list org-scope-list)]
+        (log/debug "Assigning org-level scopes:" org-scope-list "to org:" org-id)
+        (assign-connected-app-scopes (:client_id result) all-scopes org-id)))
+    result))
 
 
 (def route

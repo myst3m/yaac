@@ -996,6 +996,36 @@
        :body
        :data))
 
+(defn get-available-scopes
+  "Get available scopes from OpenID Connect discovery endpoint"
+  [_]
+  (-> (http/get (gen-url "/accounts/api/v2/oauth2/.well-known/openid-configuration")
+                {:headers (default-headers)})
+      (parse-response)
+      :body
+      :scopes-supported
+      (->> (map #(hash-map :scope %)))))
+
+(defn assign-connected-app-scopes
+  "Assign scopes to a connected app.
+   scopes: vector of scope names like [\"profile\" \"read:organization\"]
+   org-id: organization ID for org-level scopes (optional)"
+  [client-id scopes & [org-id]]
+  (let [scope-objects (mapv (fn [scope]
+                              (if (and org-id (str/includes? scope ":org"))
+                                {:scope scope
+                                 :context_params {:org org-id}}
+                                {:scope scope
+                                 :context_params {}}))
+                            scopes)
+        body {:scopes scope-objects}]
+    (log/debug "Assigning scopes:" body)
+    (-> (http/put (format (gen-url "/accounts/api/connectedApplications/%s/scopes") client-id)
+                  {:headers (default-headers)
+                   :body (edn->json :snake body)})
+        (parse-response)
+        :body)))
+
 
 (defn -get-api-proxies [org env api]
   (let [org-id (org->id org)
@@ -1737,7 +1767,16 @@
     ["capp|{*args}"]
     ["ca"]
     ["ca|{*args}"]]
-   
+
+   ;; Get available scopes
+   ["|" {:fields [:scope]
+         :handler get-available-scopes
+         :no-token true}
+    ["scope"]
+    ["scope|{*args}"]
+    ["scopes"]
+    ["scopes|{*args}"]]
+
    ["|" {:fields [:username :id :email [:extra :idp]]
          :handler get-users}
     ["user"]
