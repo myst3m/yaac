@@ -19,7 +19,7 @@
             [yaac.core :refer [*org* *env* *deploy-target*
                                parse-response default-headers
                                org->id ps->id env->id api->id app->id org->name env->name gw->id load-session!
-                               gen-url assign-connected-app-scopes] :as yc]
+                               gen-url assign-connected-app-scopes -get-root-organization] :as yc]
             [yaac.deploy :as deploy]
             [yaac.error :as e]
             [clojure.string :as str]
@@ -27,7 +27,8 @@
             [yaac.incubate :as ic]
             [camel-snake-kebab.extras :as cske]
             [camel-snake-kebab.core :as csk]
-            [clojure.spec.alpha :as s]))
+            [clojure.spec.alpha :as s]
+            [cheshire.core :as json]))
 
 
 (defn usage [summary-options]
@@ -42,6 +43,7 @@
         " - policy"
         " - invitation"
         " - connected-app"
+        " - client-provider (cp)"
         ""
         "Options:"
         ""
@@ -113,6 +115,14 @@
         "# Create connected app with authorization_code grant"
         "  yaac create connected-app --name MyApp --grant-types authorization_code --redirect-uris http://localhost:8080/callback"
         ""
+        "# Create client provider (OpenID Connect)"
+        "  yaac create cp --name MyProvider --issuer my-issuer \\"
+        "    --authorize-url https://idp.example.com/oauth2/auth \\"
+        "    --token-url https://idp.example.com/oauth2/token \\"
+        "    --introspect-url https://idp.example.com/oauth2/introspect \\"
+        "    --register-url https://idp.example.com/oauth2/register \\"
+        "    --client-id my-client --client-secret my-secret"
+        ""
         ""]
        (str/join \newline)))
 
@@ -125,12 +135,24 @@
               ["-t" "--teams TEAMS" "Team assignments (format: team_name_or_id:membership_type,...)"]
               [nil "--team-id ID_OR_NAME" "Single team ID or name for invitation"]
               [nil "--membership-type TYPE" "Membership type (member or maintainer, default: member)"]
-              ["-n" "--name NAME" "Connected app name"]
+              ["-n" "--name NAME" "Connected app / client provider name"]
               [nil "--grant-types TYPES" "Grant types (client_credentials or authorization_code)"]
               [nil "--scopes SCOPES" "Comma-separated scopes"]
               [nil "--redirect-uris URIS" "Comma-separated redirect URIs"]
               [nil "--audience AUDIENCE" "Audience (internal or everyone)"]
-              [nil "--public" "Public client (for authorization_code)"]])
+              [nil "--public" "Public client (for authorization_code)"]
+              ;; Client provider options
+              [nil "--description DESC" "Client provider description"]
+              [nil "--issuer ISSUER" "Token issuer identifier"]
+              [nil "--authorize-url URL" "Authorization endpoint URL"]
+              [nil "--token-url URL" "Token endpoint URL"]
+              [nil "--introspect-url URL" "Introspection endpoint URL"]
+              [nil "--register-url URL" "Client registration endpoint URL"]
+              [nil "--registration-auth AUTH" "Client registration authorization"]
+              [nil "--client-id ID" "Primary client ID"]
+              [nil "--client-secret SECRET" "Primary client secret"]
+              [nil "--timeout MS" "Client request timeout in ms (default: 5000)"]
+              [nil "--allow-untrusted-certs" "Allow untrusted certificates"]])
 
 
 (defn create-organization [{:keys [parent
@@ -430,6 +452,61 @@
                                       :env-ids env-ids})))
     result))
 
+(defn create-client-provider
+  "Create a new OpenID Connect client provider
+
+   Required options:
+   - --name: Provider name
+   - --authorize-url: Authorization endpoint URL
+   - --token-url: Token endpoint URL
+   - --introspect-url: Introspection endpoint URL
+   - --register-url: Client registration endpoint URL
+   - --issuer: Token issuer identifier
+   - --client-id: Primary client ID
+   - --client-secret: Primary client secret"
+  [{:keys [name description issuer authorize-url token-url introspect-url
+           register-url registration-auth client-id client-secret timeout
+           allow-untrusted-certs] :as opts}]
+  (when-not name
+    (throw (e/invalid-arguments "Client provider name is required (--name)" opts)))
+  (when-not (and authorize-url token-url introspect-url)
+    (throw (e/invalid-arguments "URLs are required (--authorize-url, --token-url, --introspect-url)" opts)))
+  (when-not register-url
+    (throw (e/invalid-arguments "Registration URL is required (--register-url)" opts)))
+  (when-not issuer
+    (throw (e/invalid-arguments "Issuer is required (--issuer)" opts)))
+  (when-not (and client-id client-secret)
+    (throw (e/invalid-arguments "Client credentials are required (--client-id, --client-secret)" opts)))
+
+  (let [{root-org-id :id} (-get-root-organization)
+        request-body {"name" name
+                      "type" {"name" "openid-dynamic-client"
+                              "description" (or description "")}
+                      "allow_untrusted_certificates" (boolean allow-untrusted-certs)
+                      "oidc_dynamic_client_provider"
+                      {"allow_local_client_deletion" true
+                       "allow_external_client_modification" true
+                       "allow_client_import" true
+                       "issuer" issuer
+                       "client_request_timeout" (if timeout (parse-long timeout) 5000)
+                       "urls" {"authorize" authorize-url
+                               "token" token-url
+                               "introspect" introspect-url}
+                       "client" {"urls" {"register" register-url}
+                                 "registration" {"authorization" (or registration-auth "")}}
+                       "primary_client" {"id" client-id
+                                         "secret" client-secret}}}
+        json-body (json/generate-string request-body)]
+    (log/debug "Creating client provider:" name)
+    (log/debug "Request body:" json-body)
+    (-> (http/post (format (gen-url "/accounts/api/organizations/%s/clientProviders") root-org-id)
+                   {:headers (default-headers)
+                    :body json-body})
+        (parse-response)
+        :body
+        (yc/add-extra-fields :id :provider-id
+                             :name :name
+                             :type (comp :name :type)))))
 
 (def route
   (for [op ["c" "create"]]
@@ -460,4 +537,8 @@
       ["invite|{*args}"]]
      ["|" {:handler create-connected-app
            :fields [:client-id :client-secret :client-name]}
-      ["connected-app|{*args}"]]]))
+      ["connected-app|{*args}"]]
+     ["|" {:handler create-client-provider
+           :fields [[:extra :name] [:extra :id] [:extra :type]]}
+      ["cp|{*args}"]
+      ["client-provider|{*args}"]]]))

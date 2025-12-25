@@ -16,12 +16,13 @@
              [http :as http]
              [log :as log]]
             [reitit.core :as r]
-            [yaac.core :refer [*org* *env* parse-response default-headers org->id env->id api->id org->name ps->id conn->id load-session! gen-url assign-connected-app-scopes connected-app->id] :as yc]
+            [yaac.core :refer [*org* *env* parse-response default-headers org->id env->id api->id org->name ps->id conn->id load-session! gen-url assign-connected-app-scopes connected-app->id -get-root-organization -get-client-provider client-provider->id] :as yc]
             [yaac.error :as e]
             [clojure.string :as str]
             [clojure.tools.cli :refer [parse-opts]]
             [yaac.incubate :as ic]
-            [clojure.spec.alpha :as s]))
+            [clojure.spec.alpha :as s]
+            [cheshire.core :as json]))
 
 
 (defn usage [summary-options]
@@ -41,6 +42,7 @@
         "  - org [org] key=val                   ...                    "
         "  - conn [org] <private-space> <connection> ... key=val  "
         "  - connected-app <name-or-client-id> --scopes ... --org-scopes ..."
+        "  - client-provider <name-or-id> --name ... --authorize-url ..."
         ""
         "Keys:"
         "  app"
@@ -65,6 +67,17 @@
         "    - --org-scopes          : org-level scopes (read:organization,edit:organization)"
         "    - --env-scopes          : env-level scopes (read:applications,admin:cloudhub)"
         "    - --env                 : environments for env-scopes (Production,Sandbox)"
+        "  client-provider (cp)"
+        "    - --description                       : Description"
+        "    - --issuer                            : Token issuer identifier"
+        "    - --authorize-url                     : Authorization endpoint URL"
+        "    - --token-url                         : Token endpoint URL"
+        "    - --introspect-url                    : Introspection endpoint URL"
+        "    - --client-id                         : Primary client ID for introspection"
+        "    - --client-secret                     : Primary client secret"
+        "    - --allow-client-import               : Allow client import (true/false)"
+        "    - --allow-external-client-modification: Allow external modification (true/false)"
+        "    - --allow-local-client-deletion       : Allow local deletion (true/false)"
         ""
         "Example:"
         ""
@@ -93,7 +106,28 @@
               [nil "--org-scopes SCOPES" "Comma-separated org-level scopes for connected-app"]
               [nil "--env-scopes SCOPES" "Comma-separated env-level scopes for connected-app"]
               [nil "--org ORG" "Organization for scopes"]
-              [nil "--env ENVS" "Comma-separated environments for env-level scopes"]])
+              [nil "--env ENVS" "Comma-separated environments for env-level scopes"]
+              ;; Client provider options
+              [nil "--description DESC" "Client provider description"
+               :id :description]
+              [nil "--issuer ISSUER" "Token issuer identifier"
+               :id :issuer]
+              [nil "--authorize-url URL" "Authorization endpoint URL"
+               :id :authorize-url]
+              [nil "--token-url URL" "Token endpoint URL"
+               :id :token-url]
+              [nil "--introspect-url URL" "Introspection endpoint URL"
+               :id :introspect-url]
+              [nil "--client-id ID" "Primary client ID for token introspection"
+               :id :client-id]
+              [nil "--client-secret SECRET" "Primary client secret"
+               :id :client-secret]
+              [nil "--allow-client-import BOOL" "Allow client import (true/false)"
+               :id :allow-client-import]
+              [nil "--allow-external-client-modification BOOL" "Allow external client modification (true/false)"
+               :id :allow-external-client-modification]
+              [nil "--allow-local-client-deletion BOOL" "Allow local client deletion (true/false)"
+               :id :allow-local-client-deletion]])
 
 
 (defn update-asset-config [{:keys [group asset version labels]
@@ -236,6 +270,81 @@
                                     :routes (comp #(str/join "," %) :routes)))
       (throw (e/not-implemented "This type is not supported" {:type type :id id })))))
 
+(defn update-client-provider
+  "Update a client provider (OpenID Connect) configuration
+
+   NOTE: This API requires 'admin:orgclientproviders' scope and Organization Administrator permission.
+
+   Supports updating the following fields:
+   - description: Provider description
+   - issuer: Token issuer identifier
+   - authorize-url: Authorization endpoint URL
+   - token-url: Token endpoint URL
+   - introspect-url: Introspection endpoint URL
+   - client-id: Primary client ID for token introspection
+   - client-secret: Primary client secret
+   - allow-client-import: Allow client import (true/false)
+   - allow-external-client-modification: Allow external client modification (true/false)
+   - allow-local-client-deletion: Allow local client deletion (true/false)"
+  [{:keys [args description issuer authorize-url token-url introspect-url
+           client-id client-secret allow-client-import
+           allow-external-client-modification allow-local-client-deletion] :as opts}]
+  (let [cp-name-or-id (first args)
+        _ (when-not cp-name-or-id
+            (throw (e/invalid-arguments "Client provider name or ID is required" {:args args})))
+        current-cp (-get-client-provider cp-name-or-id)
+        _ (when-not current-cp
+            (throw (e/no-item "Client provider not found" {:name cp-name-or-id})))
+        provider-id (:provider-id current-cp)
+        {root-org-id :id} (-get-root-organization)
+        ;; Get current OIDC config for default values
+        oidc-config (:oidc-dynamic-client-provider current-cp)
+        ;; Build minimal update body - construct JSON directly to preserve snake_case
+        oidc-body (cond-> {"allow_local_client_deletion"
+                           (if allow-local-client-deletion
+                             (parse-boolean allow-local-client-deletion)
+                             (:allow-local-client-deletion oidc-config))
+                           "allow_external_client_modification"
+                           (if allow-external-client-modification
+                             (parse-boolean allow-external-client-modification)
+                             (:allow-external-client-modification oidc-config))
+                           "allow_client_import"
+                           (if allow-client-import
+                             (parse-boolean allow-client-import)
+                             (:allow-client-import oidc-config))
+                           "issuer" (or issuer (:issuer oidc-config))}
+                    ;; Add urls if any URL is specified
+                    (or authorize-url token-url introspect-url)
+                    (assoc "urls" (cond-> {}
+                                    (or authorize-url (get-in oidc-config [:urls :authorize]))
+                                    (assoc "authorize" (or authorize-url (get-in oidc-config [:urls :authorize])))
+                                    (or token-url (get-in oidc-config [:urls :token]))
+                                    (assoc "token" (or token-url (get-in oidc-config [:urls :token])))
+                                    (or introspect-url (get-in oidc-config [:urls :introspect]))
+                                    (assoc "introspect" (or introspect-url (get-in oidc-config [:urls :introspect])))))
+                    ;; Add primary_client if client-id or client-secret is specified
+                    (or client-id client-secret (get-in oidc-config [:primary-client :id]))
+                    (assoc "primary_client" (cond-> {}
+                                              (or client-id (get-in oidc-config [:primary-client :id]))
+                                              (assoc "id" (or client-id (get-in oidc-config [:primary-client :id])))
+                                              client-secret
+                                              (assoc "secret" client-secret))))
+        updated-body (cond-> {}
+                       description (assoc "type" {"description" description})
+                       :always (assoc "oidc_dynamic_client_provider" oidc-body))
+        ;; Use cheshire directly to avoid key transformation
+        json-body (json/generate-string updated-body)]
+    (log/debug "Updating client provider:" provider-id)
+    (log/debug "Update body:" json-body)
+    (-> (http/patch (format (gen-url "/accounts/api/organizations/%s/clientProviders/%s") root-org-id provider-id)
+                    {:headers (default-headers)
+                     :body json-body})
+        (parse-response)
+        :body
+        (yc/add-extra-fields :id :provider-id
+                             :name :name
+                             :type (comp :name :type)))))
+
 (defn update-connected-app [{:keys [args scopes org-scopes env-scopes org env] :as opts}]
   "Update a connected app's scopes
 
@@ -306,4 +415,11 @@
    ["|conn|{*args}" {:handler update-cloudhub20-connection}]
    ["|connected-app" {:help true}]
    ["|connected-app|{*args}" {:fields [[:extra :client-id] [:extra :scopes]]
-                              :handler update-connected-app}]])
+                              :handler update-connected-app}]
+   ;; Client Providers
+   ["|cp" {:help true}]
+   ["|cp|{*args}" {:fields [[:extra :name] [:extra :id] [:extra :type]]
+                   :handler update-client-provider}]
+   ["|client-provider" {:help true}]
+   ["|client-provider|{*args}" {:fields [[:extra :name] [:extra :id] [:extra :type]]
+                                 :handler update-client-provider}]])

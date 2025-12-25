@@ -25,6 +25,7 @@
                                env->name
                                user->id
                                provider->id
+                               client-provider->id
                                load-session!
                                -get-root-organization
                                -get-user
@@ -34,7 +35,7 @@
             [clojure.tools.cli :refer [parse-opts]]
             [yaac.incubate :as ic]
             [clojure.spec.alpha :as s]
-            [camel-snake-kebab.core :as csk]            ))
+            [camel-snake-kebab.core :as csk]))
 
 
 (defn usage [summary-options]
@@ -54,6 +55,7 @@
         "  - api [org] [env] <api|id>                         Delete deployed api instances."
         "  - idp-user <email> provider=<name>                 Delete IdP user profile."
         "  - connected-app <name|client-id>                   Delete connected app."
+        "  - client-provider <name|id>                        Delete client provider (cp)."
         
         ""
         "Example:"
@@ -78,6 +80,9 @@
         ""
         "# Delete connected app by name"
         "  > yaac delete connected-app MyApp"
+        ""
+        "# Delete client provider by name"
+        "  > yaac delete cp MyProvider"
         ""
         ""]
     (str/join \newline)))
@@ -252,6 +257,21 @@
                        {:headers (default-headers)})
           (parse-response)
           (assoc :deleted-app app-name-or-id)))))
+
+(defn delete-client-provider [{:keys [args] :as opts}]
+  (let [[cp-name-or-id] args]
+    (when-not cp-name-or-id
+      (throw (e/invalid-arguments "Client provider name or ID is required" :args args)))
+    (let [{root-org-id :id} (-get-root-organization)
+          provider-id (client-provider->id cp-name-or-id)]
+      (when-not provider-id
+        (throw (e/no-item "Client provider not found" {:name cp-name-or-id})))
+      (-> (http/delete (format (gen-url "/accounts/api/organizations/%s/clientProviders/%s")
+                               root-org-id provider-id)
+                       {:headers (default-headers)})
+          (parse-response)
+          (assoc :deleted-provider cp-name-or-id)))))
+
 (def route
   (for [op ["del" "delete"]]
     [op {:options options
@@ -285,4 +305,10 @@
                                 :handler delete-connected-app}]
      ["|capp"]
      ["|capp|{*args}" {:fields [:status :deleted-app]
-                       :handler delete-connected-app}]]))
+                       :handler delete-connected-app}]
+     ["|cp"]
+     ["|cp|{*args}" {:fields [:status :deleted-provider]
+                     :handler delete-client-provider}]
+     ["|client-provider"]
+     ["|client-provider|{*args}" {:fields [:status :deleted-provider]
+                                   :handler delete-client-provider}]]))

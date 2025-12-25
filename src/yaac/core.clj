@@ -256,6 +256,7 @@
         "  - policy [org] [env] api                Get Policies"
         "  - entitlement                           Get entitilements for each runtime"
         "  - idp                                   Get External IdP"
+        "  - client-provider                       Get Client Providers (OpenID Connect)"
         "  - node-port [org]                       Get available node ports for apps using TCP"
         "                                          This function is required to be authenticated by 'Act as an user'"
         "  - metrics [org] [env]                   Get metrics from Anypoint Monitoring"
@@ -1150,6 +1151,54 @@
 
 (def -get-identity-providers (memoize -get-identity-providers))
 
+;;; Client Providers (for OAuth/OIDC client management)
+
+(defn -get-client-providers
+  "Get client providers (OpenID Connect client management providers)"
+  ([]
+   (let [{:keys [id]} (first (filter :is-root (-get-organizations)))]
+     (-get-client-providers id)))
+  ([org]
+   (let [org-id (org->id org)]
+     (-> (http/get (format (gen-url "/accounts/api/organizations/%s/clientProviders") org-id)
+                   {:headers (default-headers)})
+         (parse-response)
+         :body
+         :data
+         (add-extra-fields :org (org->name org-id)
+                           :id :provider-id
+                           :type (comp :name :type))))))
+
+(def -get-client-providers (memoize -get-client-providers))
+
+(defn get-client-providers [{[org] :args}]
+  (-get-client-providers (or org (:id (-get-root-organization)))))
+
+(defn -get-client-provider
+  "Get a specific client provider by ID or name with full details"
+  [id-or-name]
+  (let [{:keys [id]} (-get-root-organization)
+        providers (-get-client-providers id)
+        provider (first (filter #(or (= id-or-name (:provider-id %))
+                                     (= id-or-name (:name %)))
+                                providers))]
+    (when provider
+      (-> (http/get (format (gen-url "/accounts/api/organizations/%s/clientProviders/%s")
+                            id (:provider-id provider))
+                    {:headers (default-headers)})
+          (parse-response)
+          :body))))
+
+(def -get-client-provider (memoize -get-client-provider))
+
+(defn client-provider->id [id-or-name]
+  (->> (-get-client-provider id-or-name)
+       :provider-id))
+
+(defn client-provider->name [id-or-name]
+  (->> (-get-client-provider id-or-name)
+       :name))
+
 (defn get-identity-providers [{:keys [args]}]
   (-get-identity-providers))
 
@@ -1865,6 +1914,14 @@
          :fields [ :name [:extra :id] [:extra :org] [:extra :type]]}
     ["idp"]
     ["idp|{*args}"]]
+
+   ;; Client Providers (OpenID Connect client management)
+   ["|" {:handler get-client-providers
+         :fields [:name [:extra :id] [:extra :org] [:extra :type]]}
+    ["cp"]
+    ["cp|{*args}"]
+    ["client-provider"]
+    ["client-provider|{*args}"]]
 
    ;; Metrics
    ["|" {:handler get-metrics

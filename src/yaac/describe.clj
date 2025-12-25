@@ -20,6 +20,7 @@
                                add-extra-fields
                                org->id env->id app->id target->id
                                org->name env->name load-session! -get-deployed-applications
+                               -get-client-provider
                                gen-url] :as yc]
             [yaac.error :as e]
             [clojure.string :as str]
@@ -170,6 +171,14 @@
          (parse-response)
          :body)))
 
+(defn describe-client-provider [{:keys [args]
+                                  [cp-name-or-id] :args}]
+  (when-not cp-name-or-id
+    (throw (e/invalid-arguments "Client provider name or ID is required" :args args)))
+  (if-let [cp (-get-client-provider cp-name-or-id)]
+    [cp]
+    (throw (e/no-item "Client provider not found" {:name cp-name-or-id}))))
+
 (defn describe-connected-app [{:keys [args]
                                 [app-name-or-id] :args}]
   (when-not app-name-or-id
@@ -237,4 +246,11 @@
      ["|capp|{*args}" {:fields [:scope :org :env]
                        :handler describe-connected-app}]
 
+     ;; Client Providers
+     ["|cp" {:help true}]
+     ["|cp|{*args}" {:handler describe-client-provider
+                     :output-format :json}]
+     ["|client-provider" {:help true}]
+     ["|client-provider|{*args}" {:handler describe-client-provider
+                                   :output-format :json}]
      ]))
