@@ -21,7 +21,7 @@
             [clojure.data.xml :as dx]
             [clojure.java.io :as io]
             [yaac.core :refer [parse-response default-headers
-                               org->id org->id*
+                               org->id
                                env->id org->name load-session!
                                gen-url] :as yc]
             [yaac.error :as e]
@@ -32,7 +32,7 @@
             [camel-snake-kebab.core :as csk]
             [camel-snake-kebab.extras :as cske]
             [clojure.core.match :refer [match]]
-            ))
+            [zeph.client]))
 
 (defn usage [summary-options]
   (->> ["Usage: upload <asset> <file> [options]"
@@ -92,7 +92,10 @@
   (let [xml-str (yc/slurp-pom-file jar-path)
         root-loc (dx/parse-str xml-str)
         {g :group-id a :artifact-id v :version} (yc/pom-get-gav (z/xml-zip root-loc))
-        group-id (or (org->id* group) g)
+        ;; Exchange API requires UUID format for organizationId, so we can't use POM's groupId
+        group-id (if group
+                   (org->id group)
+                   (org->id (or yc/*org* (-> (yc/-get-root-organization) :id))))
         artifact-id (or asset a)
         latest-version  (some-> (->> (yc/get-assets {:group group-id :asset artifact-id})
                                      (keep :version))
@@ -113,11 +116,10 @@
                      :app "mule-application"
                      :plugin "mule-plugin"
                      "mule-application")
-        ;; If pom file is specified, tags cannot be added...
+        ;; Try minimal multipart - just JAR and name
         multipart (cond-> [{:name (str "files." type-field ".jar") :content (io/file jar-path)
-                            :filename "file.jar"}]
-                    ;; Umm, this field is 'tags' even though query field is labels...
-                    (not (seq labels)) (conj {:name "files.pom" :content (io/file n-path) :filename "pom.xml"})
+                            :filename "file.jar"}
+                           {:name "name" :content artifact-id}]
                     labels (conj {:name "tags" :content (str/join "," labels)}))]
 
     (spit n-path (if (or group asset version)
@@ -132,30 +134,32 @@
     (log/debug "URL:" url)
     (log/debug "multipart:"  multipart)
     (log/debug "POM: " n-path)
-    
-    (-> (http/post url {:headers {"Authorization" (str "Bearer " (:access-token yc/default-credential))
-                                   "x-sync-publication" true
-                                   "Content-Type" "multipart/form-data"}
-                        :timeout 300000 ;; timeout 300s
-                        :multipart multipart})
-        
-        (parse-response)
+
+    (let [resp (binding [zeph.client/*force-nio* true]
+                  (http/post url {:headers {"Authorization" (str "Bearer " (:access-token yc/default-credential))
+                                            ;; Use sync publication for simpler flow
+                                            "x-sync-publication" "true"}
+                                 :timeout 120000 ;; timeout 2 minutes
+                                 :progress true
+                                 :multipart multipart}))]
+      (-> resp
+          (parse-response)
         :body
         (as-> result
             (do (io/delete-file n-path)
                 result))
-        (yc/add-extra-fields :group-name (org->name group-id)))))
+        (yc/add-extra-fields :group-name (org->name group-id))))))
 
 (defn upload-raml [{:keys [group asset version api-version]
                     :or {api-version "v1"}
                     [raml-path] :args
                     :as opts}]
   (if (and group asset version raml-path)
-    (let [group-id (org->id* group)
+    (let [group-id (org->id group)
           artifact-id asset]
       (-> (http/post (format (gen-url "/exchange/api/v2/organizations/%s/assets/%s/%s/%s") group-id group-id artifact-id version)
                      {:headers {"Authorization" (str "Bearer " (:access-token yc/default-credential))
-                                "x-sync-publication" true
+                                "x-sync-publication" "true"
                                 "Content-Type" "multipart/form-data"}
                       :multipart
                       [{:name "name" :content asset} ;; name is overwritten by Platform, therefore it should be updated by PATCH...
@@ -174,7 +178,7 @@
                    [oas-path] :args
                    :as opts}]
   (if (and group asset version oas-path)
-    (let [group-id (org->id* group)
+    (let [group-id (org->id group)
           artifact-id asset
           filename (last (str/split oas-path #"/"))
           zip-path (str "/tmp/oas-" (rand-int 100000) ".zip")]

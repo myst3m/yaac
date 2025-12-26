@@ -444,6 +444,10 @@
   (if-not (or target *deploy-target*)
     (throw (e/invalid-arguments "No target as target=cloudhub-ap-northeast-1 specified. Specify target option or configure default target by yaac config text."))
     (let [given-target-name (name (or (first target) *deploy-target*))
+          ;; Handle hy: prefix for hybrid/on-premise servers
+          [actual-target-name target-filter] (if (str/starts-with? given-target-name "hy:")
+                                               [(subs given-target-name 3) #(= "SERVER" (:type %))]
+                                               [given-target-name (constantly true)])
           [org env app] (case (count args)
                           ;; deploy app target=rtf:k1 labels=demo,db (no prefix)
                           0 [*org* *env* ""]
@@ -452,10 +456,11 @@
                           ;;  deploy app T1 Production my-app target=ch20:ap-northeasst
                           3 [(first args) (second args) (last args)]
                           (throw (e/invalid-arguments "Org and Env should be specified or use default context with yaac config command" {:args args :target target})))
-          
+
           [[target-name target-type] :as targets] (->> (yc/-get-runtime-targets org env)
+                                                       (filter target-filter)
                                                        (filter #(= (str/lower-case (:name %))
-                                                                   (str/lower-case given-target-name)))
+                                                                   (str/lower-case actual-target-name)))
                                                        (map (juxt :name (comp keyword str/lower-case :type))))
 
           n-args [target-name org env app]]

@@ -1316,9 +1316,13 @@
 
 
 (defn target->id [org env id-or-name]
-  (let [targets (filter #(or (= (:name %) id-or-name)
-                             (= (:id %) id-or-name))
-                        (-get-runtime-targets org env) )]
+  (let [;; Handle hy: prefix for hybrid/on-premise servers
+        [target-name target-sources] (if (str/starts-with? id-or-name "hy:")
+                                       [(subs id-or-name 3) (-get-servers org env)]
+                                       [id-or-name (-get-runtime-targets org env)])
+        targets (filter #(or (= (:name %) target-name)
+                             (= (str (:id %)) target-name))
+                        target-sources)]
     (cond
       (= 0 (count targets))  (throw (e/target-not-found "No target found" {:target id-or-name :available (map :id targets)}))
       (< 1 (count targets)) (throw (e/multiple-target-name-found "Multiple target name found. Specific id instead of target name" {:name id-or-name} ))
