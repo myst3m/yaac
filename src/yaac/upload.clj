@@ -135,19 +135,19 @@
     (log/debug "POM: " n-path)
 
     ;; Trace options are now picked up from global zeph-client/*trace* and *trace-detail* vars bound in cli.clj
-    (let [resp @(http/post url {:headers {"Authorization" (str "Bearer " (:access-token yc/default-credential))
-                                          ;; Use sync publication for simpler flow
-                                          "x-sync-publication" "true"}
-                                :timeout 300000 ;; timeout 5 minutes for large files
-                                :multipart multipart})]
-      (log/debug "Response:" resp)
-      (-> resp
-          (parse-response)
-        :body
-        (as-> result
-            (do (io/delete-file n-path)
-                result))
-        (yc/add-extra-fields :group-name (org->name group-id))))))
+    (try
+      (let [resp @(http/post url {:headers {"Authorization" (str "Bearer " (:access-token yc/default-credential))
+                                            ;; Use sync publication for simpler flow
+                                            "x-sync-publication" "true"}
+                                  :timeout 300000 ;; timeout 5 minutes for large files
+                                  :multipart multipart})]
+        (log/debug "Response:" resp)
+        (-> resp
+            (parse-response)
+            :body
+            (yc/add-extra-fields :group-name (org->name group-id))))
+      (finally
+        (io/delete-file n-path true)))))  ;; silently=true to ignore if already deleted
 
 (defn upload-raml [{:keys [group asset version api-version]
                     :or {api-version "v1"}
