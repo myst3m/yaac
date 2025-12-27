@@ -106,7 +106,7 @@
   (let [org-id (org->id org)
         env-id (env->id org env)
         app-id (:id appi)]
-    (-> @@(http/delete (format (gen-url "/amc/application-manager/api/v2/organizations/%s/environments/%s/deployments/%s") org-id env-id app-id)
+    (-> @(http/delete (format (gen-url "/amc/application-manager/api/v2/organizations/%s/environments/%s/deployments/%s") org-id env-id app-id)
                      {:headers (default-headers)})
         (parse-response)
         ;; body is nil on HTTP 204
@@ -118,7 +118,7 @@
   (let [org-id (org->id org)
         env-id (env->id org env)
         app-id (:id appi)]
-    (-> @@(http/delete (format (gen-url "/hybrid/api/v1/applications/%s") app-id)
+    (-> @(http/delete (format (gen-url "/hybrid/api/v1/applications/%s") app-id)
                      {:headers (assoc (default-headers)
                                       "X-ANYPNT-ORG-ID" org-id
                                       "X-ANYPNT-ENV-ID" env-id)})
@@ -173,7 +173,7 @@
                  (map :version (yc/get-assets {:group group :asset asset}))
                  [version])]
         (reduce (fn [r v]
-                  (-> @@(http/delete
+                  (-> @(http/delete
                        (format (gen-url "/exchange/api/v2/assets/%s/%s/%s") group-id artifact-id v)
                         ;;Hard delete via API is forbidden
                         {:headers (conj (default-headers) {"x-delete-type" (if hard-delete "hard-delete" "soft-delete")})})
@@ -191,7 +191,7 @@
   (if-not org
     (throw (e/invalid-arguments "Org not specified" :args args))
     (let [org-id (org->id org)]
-      (->> @@(http/delete (format (gen-url "/accounts/api/organizations/%s") org-id)
+      (->> @(http/delete (format (gen-url "/accounts/api/organizations/%s") org-id)
                          {:headers (default-headers)})
            (parse-response)))))
 
@@ -206,7 +206,7 @@
       (throw (e/invalid-arguments "Org, Env and Api need to be specified" {:args args}))
       (let [org-id (org->id org)
             env-id (env->id org env)]
-        (-> @@(http/delete (format (gen-url "/apimanager/api/v1/organizations/%s/environments/%s/apis/%s") org-id env-id api-id)
+        (-> @(http/delete (format (gen-url "/apimanager/api/v1/organizations/%s/environments/%s/apis/%s") org-id env-id api-id)
                          {:headers (default-headers)})
             (parse-response)
             ;; body is nil on HTTP 204
@@ -229,7 +229,7 @@
         (-> @(http/post (format (gen-url "/apimanager/xapi/v1/organizations/%s/environments/%s/apis/%s/contracts/%s/revoke") org-id env-id api-id contract-id)
                        {:headers (default-headers)})
             (parse-response))
-        (-> @@(http/delete (format (gen-url "/apimanager/api/v1/organizations/%s/environments/%s/apis/%s/contracts/%s") org-id env-id api-id contract-id)
+        (-> @(http/delete (format (gen-url "/apimanager/api/v1/organizations/%s/environments/%s/apis/%s/contracts/%s") org-id env-id api-id contract-id)
                          {:headers (default-headers)})
             (parse-response)
             ;; body is nil on HTTP 204
@@ -253,7 +253,7 @@
     (when-not app-name-or-id
       (throw (e/invalid-arguments "Connected app name or client-id is required" :args args)))
     (let [client-id (yc/connected-app->id app-name-or-id)]
-      (-> @@(http/delete (format (gen-url "/accounts/api/connectedApplications/%s") client-id)
+      (-> @(http/delete (format (gen-url "/accounts/api/connectedApplications/%s") client-id)
                        {:headers (default-headers)})
           (parse-response)
           (assoc :deleted-app app-name-or-id)))))
@@ -266,7 +266,7 @@
           provider-id (client-provider->id cp-name-or-id)]
       (when-not provider-id
         (throw (e/no-item "Client provider not found" {:name cp-name-or-id})))
-      (-> @@(http/delete (format (gen-url "/accounts/api/organizations/%s/clientProviders/%s")
+      (-> @(http/delete (format (gen-url "/accounts/api/organizations/%s/clientProviders/%s")
                                root-org-id provider-id)
                        {:headers (default-headers)})
           (parse-response)
