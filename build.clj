@@ -2,7 +2,7 @@
   (:require [clojure.tools.build.api :as b]))
 
 (def lib 'io.gitlab.myst3m/yaac)
-(def version "0.7.7")
+(def version "0.7.8")
 (def class-dir "target/classes")
 (def uber-file (format "target/%s-%s.jar" (name lib) version))
 (def native-image-name (format "target/%s-%s" (name lib) version))
@@ -44,17 +44,18 @@
     (b/process {:command-args [native-image-bin
                                "-jar" uber-file
                                "-o" native-image-name
-                               ;; GraalVM options
+                               ;; GraalVM options - USE graal-build-time InitClojureClasses like zeph
                                "--features=clj_easy.graal_build_time.InitClojureClasses,zeph.graal.ForeignRegistrationFeature"
                                "--no-fallback"
                                "-H:+UnlockExperimentalVMOptions"
                                ;; FFM support for zeph io_uring
                                "--enable-native-access=ALL-UNNAMED"
                                "-H:+ForeignAPISupport"
-                               ;; Build time initialization
-                               "--initialize-at-build-time=org.fusesource.jansi,java.sql.Date,java.sql.Timestamp,java.sql.Time"
-                               ;; Runtime initialization for zeph uring
-                               "--initialize-at-run-time=zeph.uring"
+                               "-H:+SharedArenaSupport"
+                               ;; Build time init for libraries storing Java objects in Vars
+                               "--initialize-at-build-time=org.fusesource.jansi,java.sql.Date"
+                               ;; Runtime init for zeph uring classes
+                               "--initialize-at-run-time=zeph.uring.IoUring,zeph.uring.Socket"
                                ;; Performance
                                "-O2"
                                "-march=native"

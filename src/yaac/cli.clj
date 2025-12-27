@@ -6,20 +6,20 @@
            [com.dylibso.chicory.runtime  Module ExportFunction Instance])
   (:require [yaac.core :as yc :refer [*org* *env* *deploy-target* *no-cache* *no-multi-thread* *console* global-base-url]]
             [yaac.util :as util]
-            [yaac.nrepl]
             [reitit.core :as r]
             [clojure.string :as str]
             [clojure.java.io :as io]
-            [silvur.log :as log]
+            [taoensso.timbre :as log]
             [taoensso.nippy :as nippy]
-            [silvur.util :refer [json->edn edn->json]]
+            [yaac.util :refer [json->edn edn->json]]
             [camel-snake-kebab.core :as csk]
             [camel-snake-kebab.extras :as cske]
             [clojure.tools.cli :refer (parse-opts)]
             [yaac.error :as e]
             [taoensso.timbre :as timbre]
             [zeph.client :as zeph-client]
-            [clojure.data.json :as json]
+            [jsonista.core :as json]
+            [yaac.util :as yutil]
             [yaac.deploy :as dep]
             [yaac.delete :as del]
             [yaac.upload :as up]
@@ -35,10 +35,7 @@
             [clojure.core.async :as async]
             [jansi-clj.core :as jansi]
             [yaac.auth :as auth]
-            [yaac.http :as yh]
-            [malli.instrument :as mi]
-            [malli.core :as m]
-            [malli.error :as me]))
+            [yaac.http :as yh]))
 
 (def version "0.7.7")
 
@@ -156,13 +153,7 @@
   (print (yc/default-format-by
           [:status :message]
           (or output-format :short)
-          (-> (m/explain (-> e ex-data :data :input) (-> e ex-data :data :args))
-              (me/humanize)
-              (->> (zipmap (-> e ex-data :data :args)))
-              (->> (filter #(some? (second %))))
-              (->> (map #(str (first %) " " (first (second %)))))
-              (->> (str/join ","))
-              (->> (hash-map :message)))
+          {:message (str (ex-message e))}
           {}))
   (flush))
 
@@ -198,7 +189,7 @@
                 (if (= :raw (:output-format data))
                   
                   (do (async/put! *console* \newline)
-                      (async/put! *console* (with-out-str (json/pprint results)))
+                      (async/put! *console* (yutil/json-pprint results))
                       (async/put! *console* \newline)
                       (async/>! *console* :done))
                   (let [
@@ -302,21 +293,6 @@
 
 
     (cond
-
-      ;; nREPL
-      (= (first args) "nrepl")
-      (try
-        (load-default-context!)
-        (yc/load-session!)
-        (binding [*org* (:organization default-context)
-                  *env* (:environment default-context)
-                  *no-cache* (:no-cache options)
-                  *deploy-target* (:deploy-target default-context)]
-          (log/debug "default:" *org* *env*)
-          (apply yaac.nrepl/cli (rest args)))
-        (catch clojure.lang.ExceptionInfo e (print-explain e))
-        (catch Exception e (print-error e)))
-
       ;; Platform API
       :else
       (try
@@ -350,6 +326,5 @@
         (catch Exception e (print-error e))))))
 
 (defn -main [& args]
-  (mi/instrument!)
   (apply cli args)
   (shutdown-agents))

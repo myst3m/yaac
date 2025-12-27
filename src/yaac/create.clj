@@ -11,9 +11,8 @@
 
 
 (ns yaac.create
-  (:require [silvur
-             [util :refer [json->edn edn->json]]
-             [log :as log]]
+  (:require [yaac.util :refer [json->edn edn->json]]
+            [taoensso.timbre :as log]
             [zeph.client :as http]
             [reitit.core :as r]
             [yaac.core :refer [*org* *env* *deploy-target*
@@ -28,7 +27,7 @@
             [camel-snake-kebab.extras :as cske]
             [camel-snake-kebab.core :as csk]
             [clojure.spec.alpha :as s]
-            [cheshire.core :as json]))
+            [jsonista.core :as json]))
 
 
 (defn usage [summary-options]
@@ -496,7 +495,7 @@
                                  "registration" {"authorization" (or registration-auth "")}}
                        "primary_client" {"id" client-id
                                          "secret" client-secret}}}
-        json-body (json/generate-string request-body)]
+        json-body (json/write-value-as-string request-body)]
     (log/debug "Creating client provider:" name)
     (log/debug "Request body:" json-body)
     (-> @(http/post (format (gen-url "/accounts/api/organizations/%s/clientProviders") root-org-id)

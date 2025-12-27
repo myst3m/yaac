@@ -11,15 +11,14 @@
 
 
 (ns yaac.login
-  (:require [silvur
-             [util :refer [json->edn edn->json]]
-             [log :as log]]
+  (:require [yaac.util :refer [json->edn edn->json json-pprint]]
+            [taoensso.timbre :as log]
             [zeph.client :as http]
             [clojure.core.async :as async]
             [reitit.http :as rh]
             [reitit.interceptor.sieppari :as sieppari]
             [reitit.http.interceptors.parameters :as interceptor]
-            [org.httpkit.server :refer [run-server]]
+            [zeph.server :refer [run-server]]
             [reitit.core :as r]
             [yaac.core :refer [parse-response
                                default-headers
@@ -31,7 +30,6 @@
             [clojure.tools.cli :refer [parse-opts]]
             [yaac.incubate :as ic]
             [clojure.spec.alpha :as s]
-            [clojure.data.json :as json]
             [camel-snake-kebab.core :as csk]
             [camel-snake-kebab.extras :as cske]))
 
@@ -50,13 +48,12 @@
                        ""
                        "Store credential file as below, or run yaac config credential"
                        ""
-                       (with-out-str
-                         (json/pprint (cske/transform-keys csk/->snake_case_string
+                       (json-pprint (cske/transform-keys csk/->snake_case_string
                                                            {:conn-app
                                                             {:client-id "your id"
                                                              :client-secret "your secret"
                                                              :grant-type "client_credentials"
-                                                             :scope "profile edit:organization manage:exchange"}})))
+                                                             :scope "profile edit:organization manage:exchange"}}))
                        ""
                        "Examples:"
                        ""

@@ -1,26 +1,30 @@
 {:paths ["src" "resources"]
  :mvn/repos {"mule-release" {:url "https://repository.mulesoft.org/releases/"}}
- :deps {org.clojure/clojure {:mvn/version "1.12.3"}
+ :deps {org.clojure/clojure {:mvn/version "1.12.1"}
         org.clojure/tools.cli {:mvn/version "1.0.206"}
         metosin/reitit {:mvn/version "0.7.0-alpha5"}
         org.fusesource.jansi/jansi {:mvn/version "2.4.0"}
         jansi-clj/jansi-clj {:mvn/version "1.0.3"}
-        clj-commons/clj-yaml {:mvn/version "1.0.27"}
+        org.yaml/snakeyaml {:mvn/version "2.2"}
         org.clojure/core.match {:mvn/version "1.0.1"}
+        metosin/jsonista {:mvn/version "0.3.8"}
+        org.clojure/data.json {:mvn/version "2.5.0"}  ;; Required by silvur dependencies
         borkdude/edamame {:mvn/version "1.3.23"}
         camel-snake-kebab/camel-snake-kebab {:mvn/version "0.4.3"}
         org.clojure/tools.analyzer.jvm {:mvn/version "1.2.3"}
         com.taoensso/nippy {:mvn/version "3.3.0-RC1"}
         com.owainlewis/salesforce {:mvn/version "1.0.2"}
-        metosin/malli {:mvn/version "0.16.3"}
         com.dylibso.chicory/runtime {:mvn/version "0.0.12"}
         com.github.seancorfield/honeysql {:mvn/version "2.6.1126"}
         com.github.seancorfield/next.jdbc {:mvn/version "1.3.939"}
         com.mysql/mysql-connector-j {:mvn/version "8.4.0"}
-        io.gitlab.myst3m/silvur {:local/root "/home/myst/projects/silvur"}
-        io.gitlab.myst3m/zeph {:local/root "/home/myst/projects/zeph"}
-        nrepl/nrepl {:mvn/version "1.3.0"}
-        http-kit/http-kit {:mvn/version "2.8.0"}
+        io.gitlab.myst3m/silvur {:git/url "https://gitlab.com/myst3m/silvur.git"
+                                  :sha "1492bed427965e1d1de2d87b09b4cae48fe7caee"
+                                  :exclusions [com.cognitect/transit-clj
+                                               buddy/buddy
+                                               twitter-api/twitter-api]}
+        io.gitlab.myst3m/zeph {:git/url "https://gitlab.com/myst3m/zeph.git"
+                               :sha "310d07bbcde2c3efb04e5d343052a4869e82342e"}
         org.mule.weave/runtime {:mvn/version "2.9.1"}
         org.mule.weave/core-modules {:mvn/version "2.9.1"}
         org.mule.weave/java-module {:mvn/version "2.9.1"}

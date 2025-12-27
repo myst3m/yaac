@@ -21,18 +21,17 @@
             [taoensso.nippy :as nippy]
             [zeph.client :as http]
             [silvur.nio :as nio]
-            [org.httpkit.client :refer [url-encode]]
             [camel-snake-kebab.core :as csk]
             [camel-snake-kebab.extras :as cske]
-            [silvur.util :refer [json->edn edn->json]]
-            [silvur.log :as log]
-            [org.httpkit.server :refer [run-server]]
-            [clojure.data.json :as json]
+            [yaac.util :refer [json->edn edn->json]]
+            [taoensso.timbre :as log]
+            [zeph.server :refer [run-server]]
+            [jsonista.core :as json]
             [yaac.util :as util]
             [yaac.error :as e]
             [clojure.data.xml :as dx]
             [clojure.set :as set]
-            [clj-yaml.core :as yaml]
+            [yaac.yaml :as yaml]
             [clojure.core.async :as async :refer [go <!! chan >!!]]
             [yaac.core :as yc]
             [reitit.http :as rh]
@@ -40,6 +39,8 @@
             [reitit.http.interceptors.muuntaja]
             ))
 
+(defn- url-encode [s]
+  (java.net.URLEncoder/encode (str s) "UTF-8"))
 
 (defn usage [summary-options]
   (->> ["Usage: auth <idp-service> [key-values]"

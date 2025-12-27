@@ -11,9 +11,8 @@
 
 
 (ns yaac.update
-  (:require [silvur
-             [util :refer [json->edn edn->json]]
-             [log :as log]]
+  (:require [yaac.util :refer [json->edn edn->json]]
+            [taoensso.timbre :as log]
             [zeph.client :as http]
             [reitit.core :as r]
             [yaac.core :refer [*org* *env* parse-response default-headers org->id env->id api->id org->name ps->id conn->id load-session! gen-url assign-connected-app-scopes connected-app->id -get-root-organization -get-client-provider client-provider->id] :as yc]
@@ -22,7 +21,7 @@
             [clojure.tools.cli :refer [parse-opts]]
             [yaac.incubate :as ic]
             [clojure.spec.alpha :as s]
-            [cheshire.core :as json]))
+            [jsonista.core :as json]))
 
 
 (defn usage [summary-options]
@@ -332,8 +331,8 @@
         updated-body (cond-> {}
                        description (assoc "type" {"description" description})
                        :always (assoc "oidc_dynamic_client_provider" oidc-body))
-        ;; Use cheshire directly to avoid key transformation
-        json-body (json/generate-string updated-body)]
+        ;; Use jsonista directly to avoid key transformation
+        json-body (json/write-value-as-string updated-body)]
     (log/debug "Updating client provider:" provider-id)
     (log/debug "Update body:" json-body)
     (-> @(http/patch (format (gen-url "/accounts/api/organizations/%s/clientProviders/%s") root-org-id provider-id)

@@ -1,5 +1,5 @@
 (ns yaac.error
-  (:require [silvur.log :as log]
+  (:require [taoensso.timbre :as log]
             [yaac.error :as e]))
 
 (defmacro deferror [name state-id & [msg]]

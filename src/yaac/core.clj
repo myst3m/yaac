@@ -23,14 +23,15 @@
             [silvur.nio :as nio]
             [camel-snake-kebab.core :as csk]
             [camel-snake-kebab.extras :as cske]
-            [silvur.util :refer [json->edn edn->json]]
-            [silvur.log :as log]
-            [clojure.data.json :as json]
+            [yaac.util :refer [json->edn edn->json]]
+            [taoensso.timbre :as log]
+            [jsonista.core :as json]
+            [yaac.util :as yutil]
             [yaac.util :as util]
             [yaac.error :as e]
             [clojure.data.xml :as dx]
             [clojure.set :as set]
-            [clj-yaml.core :as yaml]
+            [yaac.yaml :as yaml]
             [clojure.core.async :as async :refer [go <!!]]
             [yaac.core :as yc]            ))
 
@@ -155,15 +156,14 @@
 
 (defn -store-credentials! [name id secret grant-type scope]
   (let [cred-file (io/file yc/default-credentials-path)]
-    (spit cred-file (with-out-str
-                      (json/pprint (cond-> (assoc-in (if (.exists cred-file)
+    (spit cred-file (yutil/json-pprint (cond-> (assoc-in (if (.exists cred-file)
                                                        (json->edn :raw (slurp cred-file))
                                                        {})
                                                      [name] {"client_id" id
                                                              "client_secret" secret
                                                              "grant_type" grant-type
                                                              })
-                                     (seq scope) (assoc-in  [name "scope"] (or scope "full"))))))))
+                                     (seq scope) (assoc-in  [name "scope"] (or scope "full")))))))
 
 
 (defn load-session! []
@@ -547,7 +547,7 @@
       (log/debug "Counts: " count-alist)
 
       (case output-type
-        :json (with-out-str (json/pprint (mapv #(dissoc % :extra) data)))
+        :json (yutil/json-pprint (mapv #(dissoc % :extra) data))
         :edn (with-out-str (clojure.pprint/pprint (mapv #(dissoc % :extra) data)))
         :yaml (yaml/generate-string (mapv #(dissoc % :extra) data))
         (let [count-map (into {} (map #(vec (take 2 %)) count-alist))
@@ -1083,7 +1083,7 @@
     ;; - "envId" must stay camelCase (not env_id)
     (-> @(http/patch (format (gen-url "/accounts/api/organizations/%s/connectedApplications/%s/scopes") org-id client-id)
                     {:headers (default-headers)
-                     :body (json/write-str body)})
+                     :body (json/write-value-as-string body)})
         (parse-response)
         :body)))
 

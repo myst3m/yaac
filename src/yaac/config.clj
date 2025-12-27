@@ -11,10 +11,9 @@
 
 
 (ns yaac.config
-  (:require [silvur
-             [util :refer [json->edn edn->json]]
-             [http :as http]
-             [log :as log]]
+  (:require [yaac.util :refer [json->edn edn->json json-pprint]]
+            [zeph.client :as http]
+            [taoensso.timbre :as log]
             [reitit.core :as r]
             [clojure.zip :as z]
             [clojure.data.xml :as dx]
@@ -26,8 +25,7 @@
             [yaac.incubate :as ic]
             [clojure.spec.alpha :as s]
             [camel-snake-kebab.core :as csk]
-            [camel-snake-kebab.extras :as cske]
-            [clojure.data.json :as json]))
+            [camel-snake-kebab.extras :as cske]))
 
 (defn usage [summary-options]
   (->> ["Usage: config key value [options]"
