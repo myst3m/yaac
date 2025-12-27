@@ -1,0 +1,12 @@
+{
+  "resources": {
+    "includes": [
+      {"pattern": "clojure/.*\\.clj"},
+      {"pattern": "clojure/.*\\.cljc"},
+      {"pattern": "clojure/.*\\.class"},
+      {"pattern": "clojure/spec/.*\\.clj"},
+      {"pattern": "clojure/spec/.*\\.cljc"},
+      {"pattern": "clojure/spec/.*\\.class"}
+    ]
+  }
+}
