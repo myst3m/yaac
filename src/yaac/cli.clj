@@ -37,7 +37,7 @@
             [yaac.auth :as auth]
             [yaac.http :as yh]))
 
-(def version "0.7.7")
+(def version "0.7.8")
 
 ;;; main
 
