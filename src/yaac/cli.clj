@@ -18,7 +18,6 @@
             [clojure.tools.cli :refer (parse-opts)]
             [yaac.error :as e]
             [taoensso.timbre :as timbre]
-            [silvur.http :as http]
             [zeph.client :as zeph-client]
             [clojure.data.json :as json]
             [yaac.deploy :as dep]
@@ -264,17 +263,10 @@
       (alter-var-root #'default-context (constantly ctx)))
     (catch Exception e (do "Nothing"))))
 
-(defn set-http-tracing-mode! [& [level]]
-  (log/set-min-level! :trace)
-  (taoensso.timbre/merge-config!
-   {:appenders {:println {:enabled? false}
-                :http-tracer (http/http-trace-appender {:level (or level 0)})}}))
-
 (defn reset-log-mode! []
   (log/set-min-level! :info)
   (taoensso.timbre/merge-config!
-   {:appenders {:println {:enabled? true}
-                :http-tracer {:enabled? false}}}))
+   {:appenders {:println {:enabled? true}}}))
 
 (defn progress-loop []
   (let [op-ch (async/chan)]
@@ -297,22 +289,16 @@
 (defn cli [& args]
   (let [{:keys [options arguments summary errors] :as command-context} (parse-opts
                                                                          (map name args) ;; To string
-                                                                         cli-global-options)]
+                                                                         cli-global-options
+                                                                         :in-order true)]
 
     (reset-log-mode!)
-
-    (when (:http-trace options)
-      (set-http-tracing-mode! 0))
-
-    (when (:http-trace-detail options)
-      (set-http-tracing-mode! 1))
-    
     (yc/set-global-base-url (:base-url options))
 
     (when (:debug options)
       (log/set-min-level! :trace)
       (taoensso.timbre/merge-config!
-       {:appenders {:println {:enabled? true  :ns-filter {:allow #{"*"} :deny #{"silvur.http"}}}}}))
+       {:appenders {:println {:enabled? true  :ns-filter {:allow #{"*"} :deny #{"zeph.client"}}}}}))
 
 
     (cond
@@ -341,16 +327,17 @@
                   *no-cache* (:no-cache options)
                   *no-multi-thread* (:http-trace-detail options)
                   zeph-client/*force-http1* (:http1 options)
+                  zeph-client/*trace* (:http-trace options)
+                  zeph-client/*trace-detail* (:http-trace-detail options)
                   *console* (async/chan)]
           (log/debug "default:" *org* *env*)
-          (log/debug "Args: " args)
+          (log/debug "Args: " arguments)
           ;; result is pushed to *console* channel
           (let [pch (if (:progress options)
                       (progress-loop)
                       ;; dummy
                       (async/chan))]
-            (apply -cli args)
-            (when (or (:debug options) (:http-trace options)) (println)) ;; Just for eye candy
+            (apply -cli arguments)
             (loop [ch *console*]
               (let [result (async/<!! ch)]
                 (async/put! pch :completed)

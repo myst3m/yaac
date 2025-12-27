@@ -13,8 +13,8 @@
 (ns yaac.create
   (:require [silvur
              [util :refer [json->edn edn->json]]
-             [http :as http]
              [log :as log]]
+            [zeph.client :as http]
             [reitit.core :as r]
             [yaac.core :refer [*org* *env* *deploy-target*
                                parse-response default-headers
@@ -164,7 +164,7 @@
   (if-not (and org parent)
     (throw (e/invalid-arguments "Org and its parent org needs to be specified" :args args))
     (let [parent-org-id (org->id parent)]
-      (->> (http/post (gen-url "/accounts/api/organizations")
+      (->> @(http/post (gen-url "/accounts/api/organizations")
                        {:headers (default-headers)
                         :body (edn->json {:name org
                                           :ownerId (:id (:user (:body (yc/get-me ))))
@@ -184,7 +184,7 @@
     (throw (e/invalid-arguments "Org needs to be specified" :args args))
     (let [env-type (or (keyword (first type)) :sandbox)
           org-id (org->id org)]
-      (->> (http/post (format (gen-url "/accounts/api/organizations/%s/environments") org-id )
+      (->> @(http/post (format (gen-url "/accounts/api/organizations/%s/environments") org-id )
                        {:headers (default-headers)
                         :body (edn->json {:name env-name
                                           :isProduction (= env-type :production)
@@ -210,7 +210,7 @@
   
 ;;   (let [org-id (org->id (or org *org* ))
 ;;         ps-id (ps->id org-id ps)]
-;;     (-> (http/post (format "https://anypoint.mulesoft.com/runtimefabric/api/organizations/%s/privatespaces/%s/transitgateways " org-id ps-id)
+;;     (-> @(http/post (format "https://anypoint.mulesoft.com/runtimefabric/api/organizations/%s/privatespaces/%s/transitgateways " org-id ps-id)
 ;;                    {:headers (default-headers)
 ;;                     :body })))
 ;;   )
@@ -242,7 +242,7 @@
 
       (log/debug "org:" org-id "env:" env-id "group:" group-id "deployment-type:" dtype)
 
-        (let [api-result (->> (http/post (format (gen-url "/apimanager/api/v1/organizations/%s/environments/%s/apis") org-id env-id)
+        (let [api-result (->> @(http/post (format (gen-url "/apimanager/api/v1/organizations/%s/environments/%s/apis") org-id env-id)
                                          {:headers (assoc (default-headers)
                                                           "X-ANYPNT-ORG-ID" org-id
                                                           "X-ANYPNT-ENV-ID" env-id)
@@ -324,7 +324,7 @@
                           :else (let [{:keys [asset-id version group-id]} (first policies)]
                                   {:group-id group-id :asset-id asset-id :version version}))))]
 
-    (-> (http/post (format (gen-url "/apimanager/api/v1/organizations/%s/environments/%s/apis/%s/policies") org-id env-id api-id)
+    (-> @(http/post (format (gen-url "/apimanager/api/v1/organizations/%s/environments/%s/apis/%s/policies") org-id env-id api-id)
                    {:headers (default-headers)
                     :body (edn->json :camel
                                      {:configuration-data (gen-policy-config (:asset-id policy-info) opts)
@@ -382,7 +382,7 @@
         ;; Request body is an array of invitation objects
         body [(cond-> {:email email}
                 teams-list (assoc :teams teams-list))]]
-    (-> (http/post (format (gen-url "/accounts/api/organizations/%s/invites") org-id)
+    (-> @(http/post (format (gen-url "/accounts/api/organizations/%s/invites") org-id)
                    {:headers (default-headers)
                     :body (edn->json :snake body)})
         (parse-response)
@@ -430,7 +430,7 @@
                       :audience audience-val
                       :redirect_uris redirect-uri-list}
                public (assoc :public_client true))
-        result (-> (http/post (gen-url "/accounts/api/connectedApplications")
+        result (-> @(http/post (gen-url "/accounts/api/connectedApplications")
                               {:headers (default-headers)
                                :body (edn->json :snake body)})
                    (parse-response)
@@ -499,7 +499,7 @@
         json-body (json/generate-string request-body)]
     (log/debug "Creating client provider:" name)
     (log/debug "Request body:" json-body)
-    (-> (http/post (format (gen-url "/accounts/api/organizations/%s/clientProviders") root-org-id)
+    (-> @(http/post (format (gen-url "/accounts/api/organizations/%s/clientProviders") root-org-id)
                    {:headers (default-headers)
                     :body json-body})
         (parse-response)

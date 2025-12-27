@@ -14,8 +14,8 @@
   (:import [java.util.zip ZipEntry ZipFile])
   (:require [silvur
              [util :refer [json->edn edn->json]]
-             [http :as http]
              [log :as log]]
+            [zeph.client :as http]
             [reitit.core :as r]
             [clojure.zip :as z]
             [clojure.data.xml :as dx]
@@ -31,8 +31,7 @@
             [clojure.spec.alpha :as s]
             [camel-snake-kebab.core :as csk]
             [camel-snake-kebab.extras :as cske]
-            [clojure.core.match :refer [match]]
-            [zeph.client]))
+            [clojure.core.match :refer [match]]))
 
 (defn usage [summary-options]
   (->> ["Usage: upload <asset> <file> [options]"
@@ -135,13 +134,13 @@
     (log/debug "multipart:"  multipart)
     (log/debug "POM: " n-path)
 
-    (let [resp (binding [zeph.client/*force-nio* true]
-                  (http/post url {:headers {"Authorization" (str "Bearer " (:access-token yc/default-credential))
-                                            ;; Use sync publication for simpler flow
-                                            "x-sync-publication" "true"}
-                                 :timeout 120000 ;; timeout 2 minutes
-                                 :progress true
-                                 :multipart multipart}))]
+    ;; Trace options are now picked up from global zeph-client/*trace* and *trace-detail* vars bound in cli.clj
+    (let [resp @(http/post url {:headers {"Authorization" (str "Bearer " (:access-token yc/default-credential))
+                                          ;; Use sync publication for simpler flow
+                                          "x-sync-publication" "true"}
+                                :timeout 300000 ;; timeout 5 minutes for large files
+                                :multipart multipart})]
+      (log/debug "Response:" resp)
       (-> resp
           (parse-response)
         :body
@@ -157,17 +156,16 @@
   (if (and group asset version raml-path)
     (let [group-id (org->id group)
           artifact-id asset]
-      (-> (http/post (format (gen-url "/exchange/api/v2/organizations/%s/assets/%s/%s/%s") group-id group-id artifact-id version)
-                     {:headers {"Authorization" (str "Bearer " (:access-token yc/default-credential))
-                                "x-sync-publication" "true"
-                                "Content-Type" "multipart/form-data"}
-                      :multipart
-                      [{:name "name" :content asset} ;; name is overwritten by Platform, therefore it should be updated by PATCH...
-                       {:name "properties.apiVersion" :content api-version}
-                       {:name "properties.mainFile" :content "api.raml"}
-                       {:name "files.raml.raml" :content (io/file raml-path)
-                        :filename "api.raml"}]})
-          
+      (-> @(http/post (format (gen-url "/exchange/api/v2/organizations/%s/assets/%s/%s/%s") group-id group-id artifact-id version)
+                      {:headers {"Authorization" (str "Bearer " (:access-token yc/default-credential))
+                                 "x-sync-publication" "true"
+                                 "Content-Type" "multipart/form-data"}
+                       :multipart
+                       [{:name "name" :content asset} ;; name is overwritten by Platform, therefore it should be updated by PATCH...
+                        {:name "properties.apiVersion" :content api-version}
+                        {:name "properties.mainFile" :content "api.raml"}
+                        {:name "files.raml.raml" :content (io/file raml-path)
+                         :filename "api.raml"}]})
           (parse-response)
           :body
           (yc/add-extra-fields :group-name (org->name group-id))))
@@ -187,17 +185,16 @@
         (.putNextEntry zos (java.util.zip.ZipEntry. filename))
         (io/copy (io/file oas-path) zos)
         (.closeEntry zos))
-      (-> (http/post (format (gen-url "/exchange/api/v2/organizations/%s/assets/%s/%s/%s") group-id group-id artifact-id version)
-                     {:headers {"Authorization" (str "Bearer " (:access-token yc/default-credential))
-                                "x-sync-publication" "true"
-                                "Content-Type" "multipart/form-data"}
-                      :multipart
-                      [{:name "name" :content asset}
-                       {:name "properties.apiVersion" :content api-version}
-                       {:name "properties.mainFile" :content filename}
-                       {:name "files.oas.zip" :content (io/file zip-path)
-                        :filename "oas.zip"}]})
-
+      (-> @(http/post (format (gen-url "/exchange/api/v2/organizations/%s/assets/%s/%s/%s") group-id group-id artifact-id version)
+                      {:headers {"Authorization" (str "Bearer " (:access-token yc/default-credential))
+                                 "x-sync-publication" "true"
+                                 "Content-Type" "multipart/form-data"}
+                       :multipart
+                       [{:name "name" :content asset}
+                        {:name "properties.apiVersion" :content api-version}
+                        {:name "properties.mainFile" :content filename}
+                        {:name "files.oas.zip" :content (io/file zip-path)
+                         :filename "oas.zip"}]})
           (parse-response)
           :body
           (as-> result

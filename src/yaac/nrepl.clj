@@ -1,5 +1,5 @@
 (ns yaac.nrepl
-  (:require [silvur.http :as http]
+  (:require [zeph.client :as http]
             [silvur.util :refer [edn->json json->edn]]
             [silvur.log :as log]
             [nrepl.core :as nrepl]

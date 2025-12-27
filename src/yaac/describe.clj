@@ -13,8 +13,8 @@
 (ns yaac.describe
   (:require [silvur
              [util :refer [json->edn edn->json]]
-             [http :as http]
              [log :as log]]
+            [zeph.client :as http]
             [reitit.core :as r]
             [yaac.core :refer [*org* *env* *deploy-target* parse-response default-headers
                                add-extra-fields
@@ -79,7 +79,7 @@
   (let [org-id (org->id org)
         env-id (env->id org env)
         app-id (:id appi)]
-    (-> (http/get (format (gen-url "/amc/application-manager/api/v2/organizations/%s/environments/%s/deployments/%s") org-id env-id app-id)
+    (-> @(http/get (format (gen-url "/amc/application-manager/api/v2/organizations/%s/environments/%s/deployments/%s") org-id env-id app-id)
                   {:headers (default-headers)})
         (parse-response)
         :body
@@ -90,7 +90,7 @@
   (let [org-id (org->id org)
         env-id (env->id org env)
         app-id (:id appi)]
-    (-> (http/get (format (gen-url "/hybrid/api/v1/applications/%s") app-id)
+    (-> @(http/get (format (gen-url "/hybrid/api/v1/applications/%s") app-id)
                   {:headers (assoc (default-headers)
                                    "X-ANYPNT-ORG-ID" org-id
                                    "X-ANYPNT-ENV-ID" env-id)})
@@ -131,7 +131,7 @@
   (if-not (and group asset)
     (throw (e/invalid-arguments "Group and asset are required" {:group group :asset asset}))
     (let [org-id (org->id group)]
-      (-> (http/get (format (gen-url "/exchange/api/v2/assets/%s/%s/asset") org-id asset)
+      (-> @(http/get (format (gen-url "/exchange/api/v2/assets/%s/%s/asset") org-id asset)
                     {:headers (default-headers)})
           (parse-response)
           :body))))
@@ -145,7 +145,7 @@
         api-id (yc/api->id org env api)]
 
     (if (and org-id env-id api-id)
-      (->> (http/get (format (gen-url "/apimanager/api/v1/organizations/%s/environments/%s/apis/%s") org-id env-id api-id)
+      (->> @(http/get (format (gen-url "/apimanager/api/v1/organizations/%s/environments/%s/apis/%s") org-id env-id api-id)
                      {:headers (default-headers)})
            (parse-response)
            :body
@@ -156,7 +156,7 @@
 (defn describe-organization [{:keys [args]
                               [org] :args}]
   (let [org-id (org->id (or org *org*))]
-    (->> (http/get (format (gen-url "/accounts/api/organizations/%s") org-id)
+    (->> @(http/get (format (gen-url "/accounts/api/organizations/%s") org-id)
                    {:headers (default-headers)})
          (parse-response)
          :body)))
@@ -166,7 +166,7 @@
   (let [org-id (org->id (or org *org*))
         env-id (env->id org-id (or env *env*))]
 
-    (->> (http/get (format (gen-url "/accounts/api/organizations/%s/environments/%s") org-id env-id)
+    (->> @(http/get (format (gen-url "/accounts/api/organizations/%s/environments/%s") org-id env-id)
                    {:headers (default-headers)})
          (parse-response)
          :body)))

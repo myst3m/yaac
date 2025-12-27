@@ -13,8 +13,8 @@
 (ns yaac.deploy
   (:require [silvur
              [util :refer [json->edn edn->json]]
-             [http :as http]
              [log :as log]]
+            [zeph.client :as http]
             [reitit.core :as r]
             [yaac.core :refer [*org* *env* *deploy-target* *no-multi-thread*
                                parse-response default-headers
@@ -30,7 +30,7 @@
 (defn deploy-to-flex-gateway
   "Deploy API instance to Flex Gateway"
   [org-id env-id api-id target-id]
-  (-> (http/post (format (gen-url "/proxies/xapi/v1/organizations/%s/environments/%s/apis/%s/deployments")
+  (-> @(http/post (format (gen-url "/proxies/xapi/v1/organizations/%s/environments/%s/apis/%s/deployments")
                          org-id env-id api-id)
                  {:headers (default-headers)
                   :body (edn->json :camel
@@ -208,7 +208,7 @@
 
                   (log/debug "Deploy URL:" url)
 
-                  (-> (http-fn url {:body (edn->json (-make-rtf-payload org env
+                  (-> @(http-fn url {:body (edn->json (-make-rtf-payload org env
                                                                         (-> (into {} (filter #(re-find #"^\+" (name (first %)) ) opts)) 
                                                                             (conj {:group g :asset a :version v :cpu cpu :mem mem :replicas replicas
                                                                                    :app target-app-name :target cluster
@@ -330,7 +330,7 @@
                                           (and (not v-cores) instance-type) (assoc-in [:target :deploymentSettings :instanceType] (str "mule." (first instance-type)))
                                           v-cores (assoc-in [:application :vCores] (as-> (parse-double (first v-cores)) x
                                                                                      (if (= 0.0 (mod x 1)) (long x) x)) )))}
-                      (->> (http-fn url))
+                      (->> @(http-fn url))
                       (parse-response)
                       :body
                       (as-> payload
@@ -382,7 +382,7 @@
                                          many-deploys? (str/join "-" (filter (comp not empty?) [app-or-prefix a]))
                                          (seq app-or-prefix) app-or-prefix
                                          :else a)]
-                   (-> (http/post (gen-url "/hybrid/api/v1/applications")
+                   (-> @(http/post (gen-url "/hybrid/api/v1/applications")
                                   {:headers (assoc (default-headers)
                                                    "X-ANYPNT-ORG-ID" org-id
                                                    "X-ANYPNT-ENV-ID" env-id)
@@ -513,35 +513,24 @@
                          (filter #(= (:target-id %) target-id))
                          (first))]
 
-          (cond->> {:headers (default-headers)
-                    :body (edn->json :camel
-                                     {:gateway-version "4.4.0"
-                                      :target-id target-id
-                                      :target-name target-type
-                                      :target-type "server"
-                                      :type type
-                                      :environment-id env-id
-                                      :environment-name (env->name org env)
-                                      }
-                                     ;; {:name app,
-                                     ;;  :type type,
-                                     ;;  :target
-                                     ;;  {:target-id target-id,
-                                     ;;   :deployment-settings {:runtime-version "4.4.0"}}}
-                                     )}
-               
-            (not proxy) (http/post (format (gen-url "/proxies/xapi/v1/organizations/%s/environments/%s/apis/%s/deployments")
-                                           org-id
-                                           env-id
-                                           api-id))
-            (some? proxy) (http/patch (format (gen-url "/proxies/xapi/v1/organizations/%s/environments/%s/apis/%s/deployments/%s")
-                                              org-id
-                                              env-id
-                                              api-id
-                                              (:id proxy)))
-            
-            :always (parse-response)
-            :always :body))))))
+          (let [opts {:headers (default-headers)
+                      :body (edn->json :camel
+                                       {:gateway-version "4.4.0"
+                                        :target-id target-id
+                                        :target-name target-type
+                                        :target-type "server"
+                                        :type type
+                                        :environment-id env-id
+                                        :environment-name (env->name org env)})}]
+            (-> (if proxy
+                  @(http/patch (format (gen-url "/proxies/xapi/v1/organizations/%s/environments/%s/apis/%s/deployments/%s")
+                                       org-id env-id api-id (:id proxy))
+                               opts)
+                  @(http/post (format (gen-url "/proxies/xapi/v1/organizations/%s/environments/%s/apis/%s/deployments")
+                                      org-id env-id api-id)
+                              opts))
+                (parse-response)
+                :body)))))))
 
 
 (def route

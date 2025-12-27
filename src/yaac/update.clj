@@ -13,8 +13,8 @@
 (ns yaac.update
   (:require [silvur
              [util :refer [json->edn edn->json]]
-             [http :as http]
              [log :as log]]
+            [zeph.client :as http]
             [reitit.core :as r]
             [yaac.core :refer [*org* *env* parse-response default-headers org->id env->id api->id org->name ps->id conn->id load-session! gen-url assign-connected-app-scopes connected-app->id -get-root-organization -get-client-provider client-provider->id] :as yc]
             [yaac.error :as e]
@@ -137,7 +137,7 @@
     (let [group-id (org->id group)
           url (format (gen-url "/exchange/api/v2/organizations/%s/assets/%s/%s/%s/mutabledata") group-id group-id asset version)
           multipart [{:name "tags" :content (str/join "," labels)}]]
-      (-> (http/patch url {:headers (yc/multipart-headers)
+      (-> @(http/patch url {:headers (yc/multipart-headers)
                            :multipart multipart})
           (parse-response)))))
 
@@ -151,7 +151,7 @@
       (let [org-id (org->id org)
             env-id (env->id org env)
             api-id (api->id org env api)]
-        (-> (http/patch (format (gen-url "/apimanager/api/v1/organizations/%s/environments/%s/apis/%s") org-id env-id api-id)
+        (-> @(http/patch (format (gen-url "/apimanager/api/v1/organizations/%s/environments/%s/apis/%s") org-id env-id api-id)
                         {:headers (yc/default-headers)
                          :body (edn->json :camel {:asset-version asset-version})})
             (parse-response)
@@ -174,13 +174,13 @@
                        (do
                          (-> (gen-url "/hybrid/api/v1/applications/%s")
                              (format (:id app))
-                             (http/patch {:headers (assoc (default-headers)
-                                                          "X-ANYPNT-ORG-ID" target-org-id
-                                                          "X-ANYPNT-ENV-ID" target-env-id)
-                                          :body (edn->json (cond-> {}
-                                                             state (assoc-in [:desired-status] (condp = (keyword (str/lower-case (first state)))
-                                                                                                 :start "STARTED"
-                                                                                                 :stop "STOPPED"))))})
+                             (#(deref (http/patch % {:headers (assoc (default-headers)
+                                                                     "X-ANYPNT-ORG-ID" target-org-id
+                                                                     "X-ANYPNT-ENV-ID" target-env-id)
+                                                     :body (edn->json (cond-> {}
+                                                                        state (assoc-in [:desired-status] (condp = (keyword (str/lower-case (first state)))
+                                                                                                            :start "STARTED"
+                                                                                                            :stop "STOPPED"))))})))
                              (yc/parse-response)
                              :body
                              :data
@@ -192,14 +192,14 @@
                        (do
                          (-> (gen-url "/amc/application-manager/api/v2/organizations/%s/environments/%s/deployments/%s")
                              (format target-org-id target-env-id (:id app))
-                             (http/patch {:headers (yc/default-headers)
-                                          :body (edn->json (cond-> {}
-                                                             v-cores (assoc-in [:application :v-cores] (str (first v-cores)))
-                                                             replicas (assoc-in [:target :replicas] (parse-long (first replicas)))
-                                                             runtime-version (assoc-in [:target :deployment-settings :runtime-version] (first runtime-version))
-                                                             state (assoc-in [:application :desired-state] (condp = (keyword (str/lower-case (first state)))
-                                                                                                             :start "STARTED"
-                                                                                                             :stop "STOPPED"))))})
+                             (#(deref (http/patch % {:headers (yc/default-headers)
+                                                     :body (edn->json (cond-> {}
+                                                                        v-cores (assoc-in [:application :v-cores] (str (first v-cores)))
+                                                                        replicas (assoc-in [:target :replicas] (parse-long (first replicas)))
+                                                                        runtime-version (assoc-in [:target :deployment-settings :runtime-version] (first runtime-version))
+                                                                        state (assoc-in [:application :desired-state] (condp = (keyword (str/lower-case (first state)))
+                                                                                                                        :start "STARTED"
+                                                                                                                        :stop "STOPPED"))))})))
                              (parse-response)
                              :body
                              (yc/add-extra-fields :status #(get-in % [:status])
@@ -217,7 +217,7 @@
                static-ips (assoc-in [:entitlements :static-ips :assigned] (parse-long (first static-ips)))
                network-connections (assoc-in [:entitlements :network-connections :assigned] (parse-long (first network-connections)))
                vpns (assoc-in [:entitlements :vpns :assigned] (parse-long (first vpns))))]
-    (->> (http/put (format (gen-url "/accounts/api/organizations/%s") org-id)
+    (->> @(http/put (format (gen-url "/accounts/api/organizations/%s") org-id)
                    {:headers (default-headers)
                     :body (edn->json body)})
          (parse-response)
@@ -244,7 +244,7 @@
                         (reduce #(set (conj %1 (subs %2 1))) routes additional-routes))]
 
     (condp = (keyword type)
-      :vpn (-> (http/patch
+      :vpn (-> @(http/patch
                 (format (gen-url "/runtimefabric/api/organizations/%s/privatespaces/%s/connections/%s") org-id ps-id id)
                 {:headers (default-headers)
                  :body (edn->json :camel {:id id
@@ -258,7 +258,7 @@
                                     :name :connection-name
                                     :type type
                                     :routes (fn [x] (->> x :static-routes (str/join ",")))))
-      :tgw (-> (http/patch
+      :tgw (-> @(http/patch
                 (format (gen-url "/runtimefabric/api/organizations/%s/privatespaces/%s/transitgateways/%s") org-id ps-id id)
                 {:headers (default-headers)
                  :body (edn->json :camel {:routes merged-routes})})
@@ -336,7 +336,7 @@
         json-body (json/generate-string updated-body)]
     (log/debug "Updating client provider:" provider-id)
     (log/debug "Update body:" json-body)
-    (-> (http/patch (format (gen-url "/accounts/api/organizations/%s/clientProviders/%s") root-org-id provider-id)
+    (-> @(http/patch (format (gen-url "/accounts/api/organizations/%s/clientProviders/%s") root-org-id provider-id)
                     {:headers (default-headers)
                      :body json-body})
         (parse-response)

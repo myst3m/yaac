@@ -18,13 +18,12 @@
             [clojure.string :as str]
             [clojure.java.io :as io]
             [taoensso.nippy :as nippy]
-            [silvur.http :as http]
+            [zeph.client :as http]
             [silvur.nio :as nio]
             [camel-snake-kebab.core :as csk]
             [camel-snake-kebab.extras :as cske]
             [silvur.util :refer [json->edn edn->json]]
             [silvur.log :as log]
-            [silvur.http]
             [org.httpkit.server :refer [run-server]]
             [clojure.data.json :as json]
             [yaac.util :as util]
@@ -68,7 +67,7 @@
       (throw (e/invalid-arguments "Org, Env and Api need to be specified" {:args args}))
       (let [org-id (org->id org)
             env-id (env->id org env)]
-        (-> (http/get (format (gen-url "/proxies/xapi/v1/organizations/%s/environments/%s/apis/%s/proxy") org-id env-id api-id)
+        (-> @(http/get (format (gen-url "/proxies/xapi/v1/organizations/%s/environments/%s/apis/%s/proxy") org-id env-id api-id)
                          {:headers (default-headers)})
             (parse-response)
             ;; body is ByteInputStream

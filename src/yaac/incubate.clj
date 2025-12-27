@@ -1,8 +1,8 @@
 (ns yaac.incubate
   (:require [silvur
              [util :refer [json->edn edn->json]]
-             [http :as http]
              [log :as log]]
+            [zeph.client :as http]
             [reitit.core :as r]
             [yaac.core :refer [parse-response default-headers org->id load-session! gen-url] :as yc]
             [clojure.string :as str]
@@ -10,7 +10,7 @@
 
 ;;;
 (defn get-connected-apps [client-id]
-  (->> (http/get (format (gen-url "/accounts/api/connectedApplications/%s") client-id)
+  (->> @(http/get (format (gen-url "/accounts/api/connectedApplications/%s") client-id)
                   {:headers (default-headers)})
        (parse-response)))
 
@@ -18,7 +18,7 @@
 
 
 (defn create-connected-application []
-  (->> (http/post (gen-url "/accounts/api/connectedApplications")
+  (->> @(http/post (gen-url "/accounts/api/connectedApplications")
                   {:headers (default-headers)
                    :body (edn->json
                            {:scopes ["profile"],

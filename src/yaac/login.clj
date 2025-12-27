@@ -13,8 +13,8 @@
 (ns yaac.login
   (:require [silvur
              [util :refer [json->edn edn->json]]
-             [http :as http]
              [log :as log]]
+            [zeph.client :as http]
             [clojure.core.async :as async]
             [reitit.http :as rh]
             [reitit.interceptor.sieppari :as sieppari]
@@ -84,7 +84,7 @@
 
 ;; This is deprecated because MFA is mandatory used. If MFA is exemplted, it can be used as of 2023/8/28
 (defmethod -login :user [_ & {:keys [username password base-url] :as cm}]
-  (->> (http/post (gen-url "/accounts/login")
+  (->> @(http/post (gen-url "/accounts/login")
                    {:form-params {"username" username
                                   "password" password}})
        ;; This API should be responded as json string "\"unauthorized\""  , but respond string "unauthorized" on error.
@@ -106,7 +106,7 @@
 
 
 (defmethod -login :password [_ & {:keys [username password client-id client-secret scope]}]
-  (->> (http/post (gen-url "/accounts/api/v2/oauth2/token")
+  (->> @(http/post (gen-url "/accounts/api/v2/oauth2/token")
                    {:headers {"Content-Type" "application/json"}
                     :body (edn->json :snake {:client-id client-id
                                              :client-secret client-secret
@@ -125,7 +125,7 @@
             (let [done? (atom false)]
               (fn [{:keys [params] :as req}]
                 (if-not @done?
-                  (-> (http/post (gen-url "/accounts/api/v2/oauth2/token")
+                  (-> @(http/post (gen-url "/accounts/api/v2/oauth2/token")
                                  {:headers {"Content-Type" "application/json"}
                                   :body (edn->json :snake {:code (params "code")
                                                            :redirect-uri "http://localhost:9180"

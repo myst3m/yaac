@@ -13,7 +13,7 @@
             [clojure.tools.cli :refer (parse-opts)]
             [yaac.error :as e]
             [taoensso.timbre :as timbre]
-            [silvur.http :as http]
+            [zeph.client :as http]
             [clojure.data.json :as json]
             [yaac.util :as util]
             [yaac.describe :as desc]

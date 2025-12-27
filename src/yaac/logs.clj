@@ -1,6 +1,6 @@
 (ns yaac.logs
   (:require [yaac.core :refer [org->id env->id *org* *env* gen-url] :as yc]
-            [silvur.http :as http]
+            [zeph.client :as http]
             [silvur.datetime :refer [datetime datetime* *precision* chrono-unit]]
             [clojure.string :as str]))
 
