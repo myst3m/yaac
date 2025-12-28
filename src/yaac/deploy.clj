@@ -369,6 +369,9 @@
                                    [target-name org env app-or-prefix] :args
                                    :as opts}]
   (log/debug "deploy-hybrid-application" args)
+  (when-not target-name
+    (throw (e/invalid-arguments "No target specified. Use target=hy:<server-name> to deploy to a Hybrid server."
+                                {:hint "Run 'yaac get server <org> <env>' to see available servers."})))
   (let [many-deploys? (or (some? labels) (some? search-term))
         org-id (org->id org)
         env-id (env->id org env)
@@ -447,7 +450,8 @@
   ;; target is array ["ch20:..."]
   
   (if-not (or target *deploy-target*)
-    (throw (e/invalid-arguments "No target as target=cloudhub-ap-northeast-1 specified. Specify target option or configure default target by yaac config text."))
+    (throw (e/invalid-arguments "No target specified. Use target=<target-name> (e.g., target=cloudhub-ap-northeast-1 or target=hy:<server-name>)"
+                                {:hint "Run 'yaac get target <org> <env>' for CH20/RTF targets, or 'yaac get server <org> <env>' for Hybrid servers."}))
     (let [given-target-name (name (or (first target) *deploy-target*))
           ;; Handle hy: prefix for hybrid/on-premise servers
           [actual-target-name target-filter] (if (str/starts-with? given-target-name "hy:")
