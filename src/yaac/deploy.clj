@@ -11,9 +11,8 @@
 
 
 (ns yaac.deploy
-  (:require [silvur
-             [util :refer [json->edn edn->json]]
-             [log :as log]]
+  (:require [yaac.util :refer [json->edn edn->json]]
+            [taoensso.timbre :as log]
             [zeph.client :as http]
             [reitit.core :as r]
             [yaac.core :refer [*org* *env* *deploy-target* *no-multi-thread*
@@ -409,12 +408,18 @@
                                             :message :message
                                             :status #(get-in % [:last-reported-status])
                                             :target target-name)))
-                 (catch Exception e [(e/error {:org (org->name org)
-                                               :env (env->name org env)
-                                               :name (or (and (seq app-or-prefix) app-or-prefix) a)
-                                               :target target-name
-                                               :status (-> (ex-data e) :status)
-                                               :message (-> (ex-data e) :body :message)})]))
+                 (catch Exception e
+                  (let [msg (or (-> (ex-data e) :extra :message)
+                                (-> (ex-data e) :body :message)
+                                (ex-message e)
+                                "Deployment failed")]
+                    [(e/error msg {:org (org->name org)
+                                   :env (env->name org env)
+                                   :name (or (and (seq app-or-prefix) app-or-prefix) a)
+                                   :target target-name
+                                   :status (or (-> (ex-data e) :extra :status)
+                                               (-> (ex-data e) :status))
+                                   :message msg})])))
                 [(e/invalid-arguments {:org (org->name org)
                                        :env (env->name org env)
                                        :name app-or-prefix
