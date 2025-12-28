@@ -32,8 +32,7 @@
             [clojure.data.xml :as dx]
             [clojure.set :as set]
             [yaac.yaml :as yaml]
-            [clojure.core.async :as async :refer [go <!!]]
-            [yaac.core :as yc]            ))
+            [clojure.core.async :as async :refer [go <!!]]))
 
 
 (def ^:dynamic *org*)
@@ -155,7 +154,7 @@
      (throw (e/invalid-credentials "Specified argument is NULL" {:arg cname})))))
 
 (defn -store-credentials! [name id secret grant-type scope]
-  (let [cred-file (io/file yc/default-credentials-path)]
+  (let [cred-file (io/file default-credentials-path)]
     (spit cred-file (yutil/json-pprint (cond-> (assoc-in (if (.exists cred-file)
                                                        (json->edn :raw (slurp cred-file))
                                                        {})
@@ -767,13 +766,13 @@
 (defn -get-servers [org env]
   (let [org-id (org->id org)
         env-id (env->id org-id env)]
-    (->> {:headers (assoc (default-headers)
-                          "X-ANYPNT-ORG-ID" org-id
-                          "X-ANYPNT-ENV-ID" env-id)}
-         (http/get (gen-url "/hybrid/api/v1/servers"))
-         (parse-response)
-         :body
-         :data)))
+    (-> @(http/get (gen-url "/hybrid/api/v1/servers")
+                   {:headers (assoc (default-headers)
+                                    "X-ANYPNT-ORG-ID" org-id
+                                    "X-ANYPNT-ENV-ID" env-id)})
+        (parse-response)
+        :body
+        :data)))
 
 (defn hybrid-server->id [org env cluster]
   (let [[r] (->> (-get-servers org env)
@@ -1091,7 +1090,7 @@
 (defn -get-api-proxies [org env api]
   (let [org-id (org->id org)
         env-id (env->id org env)
-        api-id (yc/api->id org env api)]
+        api-id (api->id org env api)]
     (-> @(http/get (format (gen-url "/proxies/xapi/v1/organizations/%s/environments/%s/apis/%s/deployments") org-id env-id api-id)
                   {:headers (default-headers)})
         (parse-response)
@@ -1239,10 +1238,10 @@
   (log/debug "Opts:" opts)
   (let [{:keys [all]} opts]
     (if all
-      (->> (yc/get-organizations)
+      (->> (get-organizations)
            (mapcat (fn [{g :name}]
                      (try
-                       (->> (yc/-get-environments g)
+                       (->> (-get-environments g)
                            (mapv (fn [{e :name}] [g e])))
                        (catch Exception e (log/debug (ex-cause e))))))
            (pmap (fn [[g e]] (try
@@ -1263,7 +1262,7 @@
 (defn -get-api-contracts [org env api]
   (let [org-id (org->id org)
         env-id (env->id org-id env)
-        api-id (yc/api->id org env api)]
+        api-id (api->id org env api)]
     (-> @(http/get (format (gen-url "/apimanager/api/v1/organizations/%s/environments/%s/apis/%s/contracts") org-id env-id api-id)
                   {:headers (default-headers)})
         (parse-response)
@@ -1296,13 +1295,13 @@
     [{:group-id (org->id group) :asset-id asset :version version :types ["app"]}]
     
     (and app group asset)
-    (take-last 1 (sort-by :version (yc/get-assets {:group group :asset asset :types ["app"]})))
+    (take-last 1 (sort-by :version (get-assets {:group group :asset asset :types ["app"]})))
 
     (or (seq labels) search-term) ;; Graph Query in get-assets uses 'labels' instead of 'tags'...
     (cond-> {:group group :types ["app"]}
       (seq labels) (assoc  :labels labels)
       (seq search-term) (assoc :search-term search-term)
-      :always (yc/get-assets ))
+      :always (get-assets ))
     
     :else
     (throw (e/invalid-arguments "An app and GAV are not specified. Otherwise you should specify tags to filter." (dissoc opts :summary)))))
