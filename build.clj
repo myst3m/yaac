@@ -2,7 +2,7 @@
   (:require [clojure.tools.build.api :as b]))
 
 (def lib 'io.gitlab.myst3m/yaac)
-(def version "0.7.8")
+(def version "0.7.9")
 (def class-dir "target/classes")
 (def uber-file (format "target/%s-%s.jar" (name lib) version))
 (def native-image-name (format "target/%s-%s" (name lib) version))
