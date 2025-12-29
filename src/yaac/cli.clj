@@ -278,10 +278,16 @@
 
 
 (defn cli [& args]
-  (let [{:keys [options arguments summary errors] :as command-context} (parse-opts
-                                                                         (map name args) ;; To string
-                                                                         cli-global-options
-                                                                         :in-order true)]
+  (let [{options1 :options arguments1 :arguments summary :summary errors :errors} (parse-opts
+                                                                                     (map name args) ;; To string
+                                                                                     cli-global-options
+                                                                                     :in-order true)
+        ;; Second pass: extract global options from remaining arguments (e.g., "get org -V")
+        ;; Don't use :in-order so we can catch options after positional args
+        {options2 :options arguments2 :arguments} (parse-opts arguments1 cli-global-options)
+        ;; Merge options from both passes (second pass takes precedence for flags)
+        options (merge options1 options2)
+        arguments arguments2]
 
     (reset-log-mode!)
     (yc/set-global-base-url (:base-url options))
