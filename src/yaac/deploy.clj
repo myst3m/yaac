@@ -45,9 +45,12 @@
 (def deploy-available-options
   {:rtf {:assets [:cpu "request,limit ex. 450m,550m"
                   :mem "request,limit ex. 700Mi,700Mi"
-                  :replicas "number ex. 1,2,..."]}
+                  :replicas "number ex. 1,2,..."
+                  :runtime-version "string ex. 4.10.1:12e (default: 4.10.1:12e)"
+                  :java-version "8 or 17 (default: 17). Combined as runtime-version-java17"]}
    :ch20 {:assets [:v-cores "number ex. 0.1, 0.2, 0.5, 1, 2, 4 (For classic pricing model)"
-                   :runtime-version "string ex. 4.6.0:42-java8"
+                   :runtime-version "string ex. 4.10.1:12e (default: 4.10.1:12e)"
+                   :java-version "8 or 17 (default: 17). Combined as runtime-version-java17"
                    :instance-type "string ex. nano, small, small.mem"
                    :replicas "number ex. 1,2,..."
                    :node-port "number ex. 30500"
@@ -71,6 +74,7 @@
         ""
         "  - <app> [org] [env] [your-app|app-prefix] [options] target=<deploy-target-name> key1=val1 key2=val2 ...   Required to target runtime"
         "  - <proxy> [org] [env] <api-instance> [options] target=<deploy-target-name>"
+        "  - <manifest> <manifest.yaml> [--dry-run] [--only app1,app2]   Deploy multiple apps from YAML manifest"
         ""
         "Keys:"
         ""
@@ -128,14 +132,29 @@
               ["-q" "--search-term STRING" "Query string. Same as search-term=STRING"
                :parse-fn #(str/split % #",")]])
 
+(defn- build-runtime-version
+  "Build runtime version string with java version suffix.
+   e.g., '4.10.1:12e' + '17' -> '4.10.1:12e-java17'
+   If runtime-version already contains '-java', use as-is."
+  [runtime-version java-version]
+  (let [rv (first runtime-version)
+        jv (first java-version)]
+    (cond
+      (nil? rv) nil
+      (re-find #"-java\d+" rv) rv  ; already has java version
+      :else (str rv "-java" jv))))
+
 (defn -make-rtf-payload [org env {:keys [group asset version app target runtime-version
-                                         cpu mem replicas]
-                                  :or {runtime-version ["4.5.0"]}
+                                         cpu mem replicas java-version]
+                                  :or {runtime-version ["4.10.1:12e"] java-version ["17"]}
                                   :as opts}]
+
   ;; opts: {:prop0 v0, :prop1 v2, :group "T1", :asset "hello-world, :version "1.0.0"}
-  (let [target-id (yc/target->id org env target)]
+  (let [target-id (yc/target->id org env target)
+        full-runtime-version (build-runtime-version runtime-version java-version)]
     (log/debug "deploy options: " opts)
     (log/debug "target id:" target-id)
+    (log/debug "runtime version:" full-runtime-version)
     {:application
      {:ref {:groupId (org->id group)
             :artifactId asset
@@ -156,26 +175,24 @@
      :target {:targetId target-id
               :replicas (parse-long (str (first replicas)))
               :provider "MC"
-              :deploymentSettings (cond-> {
-                                           :updateStrategy "rolling"
-                                           
+              :deploymentSettings (cond-> {:updateStrategy "rolling"
                                            :enforceDeployingReplicasAcrossNodes false
                                            :forwardSslSession false
                                            :generateDefaultPublicUrl false
                                            :persistentObjectStore false
                                            :jvm {}
                                            :lastMileSecurity false
-                                           :http {:inbound {:publicUrl nil, :pathRewrite nil}},
-                                           :resources {:cpu {:limit (last cpu)  :reserved (first cpu)},
+                                           :http {:inbound {:publicUrl nil, :pathRewrite nil}}
+                                           :resources {:cpu {:limit (last cpu)  :reserved (first cpu)}
                                                        :memory {:limit (last mem)  :reserved (first mem)}}
-                                           :disableAmLogForwarding false,
+                                           :disableAmLogForwarding false
                                            :clustered false}
-                                    (seq runtime-version) (assoc :runtimeVersion (first runtime-version)))}}))
+                                    full-runtime-version (assoc :runtimeVersion full-runtime-version))}}))
 
-(defn -deploy-rtf-application [{:keys [args labels cpu mem replicas group asset version runtime-version search-term]
+(defn -deploy-rtf-application [{:keys [args labels cpu mem replicas group asset version runtime-version java-version search-term]
                                 [cluster org env app-or-prefix] :args
-                               :or {cpu ["450m" "550m"] mem ["1200Mi" "1200Mi"] replicas ["1"] runtime-version ["4.5.0"]}
-                               :as opts}]
+                                :or {cpu ["450m" "550m"] mem ["1200Mi" "1200Mi"] replicas ["1"] runtime-version ["4.10.1:12e"] java-version ["17"]}
+                                :as opts}]
   (let [many-deploys? (or (some? labels) (some? search-term))
         ;; Resource
         [cpu-reserved cpu-limit] cpu
@@ -203,16 +220,20 @@
                                                           target-org-id
                                                           target-env-id
                                                           (:id deployed-app))]
-                                      [http/post (format (gen-url "/amc/application-manager/api/v2/organizations/%s/environments/%s/deployments") target-org-id target-env-id)])]
+                                      [http/post (format (gen-url "/amc/application-manager/api/v2/organizations/%s/environments/%s/deployments") target-org-id target-env-id)])
+
+                      rtf-payload (-make-rtf-payload org env
+                                                     (-> (into {} (filter #(re-find #"^\+" (name (first %)) ) opts))
+                                                         (conj {:group g :asset a :version v :cpu cpu :mem mem :replicas replicas
+                                                                :app target-app-name :target cluster
+                                                                :runtime-version runtime-version
+                                                                :java-version java-version})))]
 
                   (log/debug "Deploy URL:" url)
-
-                  (-> @(http-fn url {:body (edn->json (-make-rtf-payload org env
-                                                                        (-> (into {} (filter #(re-find #"^\+" (name (first %)) ) opts)) 
-                                                                            (conj {:group g :asset a :version v :cpu cpu :mem mem :replicas replicas
-                                                                                   :app target-app-name :target cluster
-                                                                                   :runtimeVersion (first runtime-version)}))))
-                                    :headers (default-headers)})
+                  (log/debug "payload:" rtf-payload)
+                  
+                  (-> @(http-fn url {:body (edn->json rtf-payload)
+                                     :headers (default-headers)})
                       (parse-response)
                       :body
                       (as-> payload
@@ -234,19 +255,19 @@
 
 (defn -deploy-cloudhub20-application [{:keys [args replicas asset group version labels
                                               runtime-version
+                                              java-version
                                               search-term
                                               v-cores
                                               instance-type
                                               clustered
                                               node-port
-                                              target-port ]
+                                              target-port]
                                        ;; v-cores should be removed for New PP
                                        [cluster org env app-or-prefix] :args
-                                       :or {;;v-cores ["0.1"]
-                                            replicas ["1"]
+                                       :or {replicas ["1"]
                                             clustered false
                                             instance-type "small"
-                                            }
+                                            java-version ["17"]}
                                        :as opts}]
 
   (log/debug "deploy-cloudhub20-application:" args)
@@ -287,8 +308,7 @@
                                       [http/post (format (gen-url "/amc/application-manager/api/v2/organizations/%s/environments/%s/deployments") target-org-id target-env-id)])
                       [node-port] node-port
                       [target-port] target-port
-                      [runtime-version] runtime-version]
-                  
+                      full-runtime-version (build-runtime-version runtime-version java-version)]
 
                   (-> {:headers (default-headers)
                        :body (edn->json (cond-> {:application
@@ -318,11 +338,10 @@
                                                                                        :persistentObjectStore false
                                                                                        :jvm {}
                                                                                        :lastMileSecurity false
-                                                                                       ;; :http {:inbound {:publicUrl nil, :pathRewrite nil}},
-                                                                                       :http {:inbound {:pathRewrite nil}},
-                                                                                       :disableAmLogForwarding false,
+                                                                                       :http {:inbound {:pathRewrite nil}}
+                                                                                       :disableAmLogForwarding false
                                                                                        :clustered clustered}
-                                                                                runtime-version (assoc :runtimeVersion runtime-version)
+                                                                                full-runtime-version (assoc :runtimeVersion full-runtime-version)
                                                                                 node-port (assoc :tcp {:inbound
                                                                                                        {:ports [{:portNumber (parse-long node-port)
                                                                                                                  :applicationPortNumber (or (parse-long target-port) 8081)}]}}))}}
@@ -546,7 +565,7 @@
   (for [op ["dep" "deploy"]]
     [op {:options options
          :usage usage}
-     ["" {:help true}]   
+     ["" {:help true}]
      ["|-h" {:help true}]
      ["|app" {:help true}]
      ["|app|{*args}" {:handler deploy-application}]
