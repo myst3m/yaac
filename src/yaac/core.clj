@@ -250,7 +250,7 @@
         "  - team                                  Get teams in the root organization"
         "  - connected-app                         Get connected applications"
         "  - runtime-target [org] [env]            Get runtime targets of RTF and CloudHub 2.0"
-        "  - standalone-gateway [org] [env]        Get Standalone Gateway as Flex Gateway"        
+        "  - gateway [org] [env]                   Get Flex Gateways (standalone + managed)"
         "  - policy [org] [env] api                Get Policies"
         "  - entitlement                           Get entitilements for each runtime"
         "  - idp                                   Get External IdP"
@@ -679,12 +679,24 @@
 
 (defn get-gateways
   "Handler for getting all Flex Gateways"
-  [{[org env] :args :as args}]
-  (let [org (or org *org*)
-        env (or env *env*)]
-    (if-not (and org env)
-      (throw (e/invalid-arguments "Org and Env need to be specified" {:args args}))
-      (-get-gateways org env))))
+  [{[org env] :args :keys [all] :as opts}]
+  (if all
+    (->> (get-organizations)
+         (mapcat (fn [{g :name}]
+                   (try
+                     (->> (-get-environments g)
+                          (mapv (fn [{e :name}] [g e])))
+                     (catch Exception e (log/debug (ex-cause e))))))
+         (pmap (fn [[g e]]
+                 (try
+                   (add-extra-fields (-get-gateways g e) :org g :env e)
+                   (catch Exception e (log/debug (ex-cause e))))))
+         (apply concat))
+    (let [org (or org *org*)
+          env (or env *env*)]
+      (if-not (and org env)
+        (throw (e/invalid-arguments "Org and Env need to be specified" {:args opts}))
+        (add-extra-fields (-get-gateways org env) :org org :env env)))))
 
 (defn gw->id
   "Get Flex Gateway ID from name. Searches both standalone and managed gateways."
@@ -1234,9 +1246,16 @@
 
 
 (defn get-deployed-applications [{:keys [args no-multi-thread search-term]
-                                  [org env] :args :as opts}]
+                                  :as opts}]
   (log/debug "Opts:" opts)
-  (let [{:keys [all]} opts]
+  (let [{:keys [all]} opts
+        ;; 引数が1つの場合は検索語として扱い、org/envはデフォルトを使う
+        [org env search] (case (count args)
+                           0 [*org* *env* nil]
+                           1 [*org* *env* (first args)]
+                           2 [(first args) (second args) nil]
+                           [(first args) (second args) (nth args 2 nil)])
+        search-term (or search-term search)]
     (if all
       (->> (get-organizations)
            (mapcat (fn [{g :name}]
@@ -1249,14 +1268,12 @@
                                (catch Exception e (log/debug (ex-cause e))))))
            (apply concat)
            (filter #(re-find (re-pattern (or search-term ".")) (:name %))))
-      (let [org (or org *org*)
-            env (or env *env*)]
-        (if-not (and org env)
-          (throw (e/invalid-arguments "Org and Env need to be specified" {:args args
-                                                                          :availables {:org (map :name (-get-organizations))
-                                                                                      :env (map :name (-get-environments org))}}))
-          (->> (-get-deployed-applications org env)
-               (filter #(re-find (re-pattern (or (str/join search-term) ".")) (:name %)))))))))
+      (if-not (and org env)
+        (throw (e/invalid-arguments "Org and Env need to be specified" {:args args
+                                                                        :availables {:org (map :name (-get-organizations))
+                                                                                    :env (map :name (-get-environments org))}}))
+        (->> (-get-deployed-applications org env)
+             (filter #(re-find (re-pattern (or (str/join search-term) ".")) (:name %))))))))
 
 
 (defn -get-api-contracts [org env api]
