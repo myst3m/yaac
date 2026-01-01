@@ -105,12 +105,12 @@
 
 (defn slurp-pom-file [jar-path]
   (with-open [zis (ZipInputStream. (FileInputStream. (io/file jar-path)))]
-    (let [pom-entry (first (filter #(re-find #".*/pom.xml" (.getName ^ZipEntry %)) (repeatedly #(.getNextEntry zis) )))
-          pom-content (loop [buf (byte-array 1024)
+    (let [pom-entry (first (filter #(re-find #".*/pom.xml" (.getName ^ZipEntry %)) (repeatedly #(.getNextEntry zis))))
+          pom-content (loop [buf (byte-array 4096)
                              s ""]
                         (let [size (.read zis buf)]
-                          (if (not= -1  size)
-                            (recur (byte-array 4096) (str s (subs (String. buf) 0 size)))
+                          (if (not= -1 size)
+                            (recur buf (str s (String. buf 0 size)))
                             s)))]
       pom-content)))
 
