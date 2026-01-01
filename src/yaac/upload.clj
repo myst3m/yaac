@@ -63,8 +63,9 @@
         ""
         " yaac upload asset account.raml -g T1 -a account-api -v 0.0.1"
         ""
-        "Hint:"
-        " Labels can be added by using yaac update asset command. See help."
+        "# Upload with labels"
+        ""
+        "  yaac upload asset my-app.jar -g T1 -a my-app -v 0.0.1 labels=db,demo"
         ""
         ""]
        (str/join \newline)))
