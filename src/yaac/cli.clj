@@ -35,7 +35,8 @@
             [clojure.core.async :as async]
             [jansi-clj.core :as jansi]
             [yaac.auth :as auth]
-            [yaac.http :as yh]))
+            [yaac.http :as yh]
+            [yaac.manifest :as manifest]))
 
 (def version "0.7.9")
 
@@ -55,7 +56,7 @@
         "  login     ...                                            Login and save token on local storage"
         "  get       org|env|asset|app|api|rtf|ps|rtt|server ...    List resources"
         "  upload    asset ...                                      Upload assets and apps"
-        "  deploy    app|proxy ...                                  Deploy applications"
+        "  deploy    app|proxy|manifest ...                         Deploy applications"
         "  delete    org|app|asset ...                              Delete assets"
         "  create    org|env|api ...                                Create resources"
         "  describe  app|asset ...                                  Describe resources"
@@ -99,6 +100,8 @@
                        yaac.logs/route
                        ;; Deploy
                        yaac.deploy/route
+                       ;; Manifest deploy
+                       yaac.manifest/route
                        ;; Delete
                        yaac.delete/route
                        ;; Create
@@ -158,17 +161,16 @@
   (flush))
 
 
-(defn -cli [& a-args]
+(defn -cli [global-opts & a-args]
   (if-let [matched-route (or (r/match-by-path router (str/join "|" (map #(URLEncoder/encode %) a-args))) ;; URL endode for '%'
                              (r/match-by-path router (str/join "|" (map #(URLEncoder/encode %) (take 1 a-args)))))]
     (let [{:keys [data path-params path]} matched-route
           {:keys [handler options usage help no-token]} data
           {:keys [args] :as params} path-params
           cooked-params (cond-> path-params
-                          :always  (-> (update :args #(some-> % (str/split #"\|")))
-                                       (update :args #(map (fn[x] (str/replace x #"\+" " ")) %))
-                                       )
+                          :always  (-> (update :args #(some-> % (str/split #"\|"))))
                           :always (ext-parse-opts (concat options cli-global-options))
+                          :always (merge global-opts)  ;; merge global options
                           (:help data) (assoc :help (:help data)) ;; merge
                           (:output-format data) (assoc :output-format (:output-format data))) ;;merge
           ]
@@ -183,9 +185,12 @@
           (async/>! *console* :done))
         (async/go
           (try
-            (when-not no-token (yc/load-session!))
-            (loop []
-              (let [results (handler cooked-params)]
+            (binding [zeph-client/*trace* (:http-trace global-opts)
+                      zeph-client/*trace-detail* (:http-trace-detail global-opts)
+                      zeph-client/*force-http1* (:http1 global-opts)]
+              (when-not no-token (yc/load-session!))
+              (loop []
+                (let [results (handler cooked-params)]
                 (if (= :raw (:output-format data))
                   
                   (do (async/put! *console* \newline)
@@ -224,8 +229,8 @@
                                (let [preferred-fields (filter #(re-find #"^[^\+]" (name %)) cmd-given-fileds)]
                                  (log/debug "command:" cmd-given-fileds)
                                  (yc/default-format-by (cond->> cmd-given-fileds
-                                                         :always (map #(str/replace (name %) #"^\+" " "))
-                                                         :always  (map #(mapv keyword (str/split % #"\.")))
+                                                         :always (map #(str/replace (name %) #"^\+" ""))
+                                                         :always (map #(mapv keyword (str/split % #"\.")))
                                                          (not (seq preferred-fields)) (into default-fields)
                                                          :always (distinct))
                                                        (or (some-> (:output-format cooked-params) csk/->kebab-case-keyword)
@@ -238,7 +243,7 @@
                       (do
                         (Thread/sleep 3000)
                         (recur))
-                      (async/>!! *console* :done))))))
+                      (async/>!! *console* :done)))))))
             (catch Exception e (do
                                  (print-error e cooked-params)
                                  (async/>!! *console* :done)))))))
@@ -282,12 +287,33 @@
                                                                                      (map name args) ;; To string
                                                                                      cli-global-options
                                                                                      :in-order true)
-        ;; Second pass: extract global options from remaining arguments (e.g., "get org -V")
-        ;; Don't use :in-order so we can catch options after positional args
-        {options2 :options arguments2 :arguments} (parse-opts arguments1 cli-global-options)
-        ;; Merge options from both passes (second pass takes precedence for flags)
-        options (merge options1 options2)
-        arguments arguments2]
+        ;; Extract global options from remaining arguments without full parsing
+        ;; This preserves command-specific options like -g, -a, -v
+        ;; Build lookup tables from cli-global-options dynamically
+        global-opt-info (into {} (for [[short long-with-meta & rest-opts] cli-global-options
+                                       :let [opts-map (apply hash-map (drop 1 rest-opts))
+                                             [_ long-flag metavar] (re-matches #"--(\S+)\s*(\S+)?" long-with-meta)
+                                             kw (keyword long-flag)
+                                             has-value? (some? metavar)]]
+                                   [short {:key kw :has-value has-value? :parse-fn (:parse-fn opts-map)}]))
+        [options2 arguments] (loop [args arguments1, opts {}, result []]
+                               (if (empty? args)
+                                 [opts result]
+                                 (let [[arg & rest-args] args
+                                       opt-info (global-opt-info arg)]
+                                   (cond
+                                     (and opt-info (not (:has-value opt-info)))
+                                     (recur rest-args (assoc opts (:key opt-info) true) result)
+
+                                     (and opt-info (:has-value opt-info))
+                                     (let [v (first rest-args)
+                                           parse-fn (or (:parse-fn opt-info) identity)]
+                                       (recur (rest rest-args) (assoc opts (:key opt-info) (parse-fn v)) result))
+
+                                     :else
+                                     (recur rest-args opts (conj result arg))))))
+        ;; Merge options from both passes (use OR for boolean flags)
+        options (merge-with (fn [v1 v2] (if (boolean? v1) (or v1 v2) v2)) options1 options2)]
 
     (reset-log-mode!)
     (yc/set-global-base-url (:base-url options))
@@ -319,7 +345,7 @@
                       (progress-loop)
                       ;; dummy
                       (async/chan))]
-            (apply -cli arguments)
+            (apply -cli options arguments)
             (loop [ch *console*]
               (let [result (async/<!! ch)]
                 (async/put! pch :completed)
