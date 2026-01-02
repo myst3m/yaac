@@ -30,6 +30,7 @@
             [yaac.update :as upd]
             [yaac.config :as cnf]
             [yaac.logs :as logs]
+            [yaac.nrepl]
             [yaac.analyze :as ana]
             ;;[yaac.dw :as dw]
             [clojure.core.async :as async]
@@ -325,6 +326,20 @@
 
 
     (cond
+      ;; nREPL
+      (= (first arguments) "nrepl")
+      (try
+        (load-default-context!)
+        (yc/load-session!)
+        (binding [*org* (:organization default-context)
+                  *env* (:environment default-context)
+                  *no-cache* (:no-cache options)
+                  *deploy-target* (:deploy-target default-context)]
+          (log/debug "default:" *org* *env*)
+          (apply yaac.nrepl/cli (rest arguments)))
+        (catch clojure.lang.ExceptionInfo e (print-explain e))
+        (catch Exception e (print-error e)))
+
       ;; Platform API
       :else
       (try
