@@ -1,0 +1,47 @@
+# Example manifest for multi-app deployment
+# Usage: yaac deploy manifest examples/deploy-manifest.yaml
+
+organization: T1
+environment: Production
+
+targets:
+  cloudhub-ap-northeast-1:
+    type: ch2
+    instance-type: small
+
+  my-rtf-cluster:
+    type: rtf
+    cpu: [500m, 1000m]
+    mem: [1200Mi, 1200Mi]
+
+  leibniz:
+    type: hybrid
+
+apps:
+  - name: customer-sapi
+    asset: T1:customer-sapi:1.0.0
+    target: my-rtf-cluster
+    properties:
+      http.port: 8081
+      db.host: oracle.internal
+
+  - name: order-sapi
+    asset: T1:order-sapi:1.2.3
+    target: my-rtf-cluster
+    properties:
+      http.port: 8082
+
+  - name: order-papi
+    asset: T1:order-papi:1.0.0
+    target: cloudhub-ap-northeast-1
+    properties:
+      http.port: 8081
+    connects-to: [customer-sapi, order-sapi]
+
+  - name: mobile-eapi
+    asset: T1:mobile-eapi:3.1.0
+    target: cloudhub-ap-northeast-1
+    replicas: 2
+    properties:
+      http.port: 8081
+    connects-to: [order-papi]

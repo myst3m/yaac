@@ -60,7 +60,7 @@
         "   - endpoint-type:      rest|http                       (default: rest, flexGateway: http)"
         "   - proxy-uri:          listen URL                      (default: http://0.0.0.0:8081)"
         "   - uri:                upstream URL"
-        "   - deployment-type:    deployment type ch20|rtf        (default: ch20)"
+        "   - deployment-type:    deployment type ch2|rtf         (default: ch2)"
         "   - target:             deploy target fg:<gw-name>      (Flex Gateway only)"
         ""
         "  policy:"
@@ -198,7 +198,7 @@
 (defn deployment-targets [x]
   (-> {:rtf "RF"
        :runtime-fabric "RF"
-       :ch20 "CH2"
+       :ch2 "CH2"
        :cloudhub2 "CH2"
        :hybrid "HY"
        :hy "HY"}

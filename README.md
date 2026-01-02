@@ -93,8 +93,9 @@ Deploy applications and proxies.
 
 | Subcommand | Alias | Description |
 |------------|-------|-------------|
-| `deploy app` | `dep app` | Deploy application to RTF/CH2.0 |
+| `deploy app` | `dep app` | Deploy application to RTF/CH2.0/Hybrid |
 | `deploy proxy` | `dep proxy` | Deploy API proxy to Flex Gateway |
+| `deploy manifest` | `dep manifest` | Deploy multiple apps from YAML manifest |
 
 ### upload
 Upload assets to Exchange.
@@ -442,7 +443,7 @@ T1            Production   -
 If you configure a default deploy target, you can add that as a last argument.
 
 ```bash
-$ yaac config context T1 Production ch20:cloudhub-ap-northeast-1
+$ yaac config context T1 Production ch2:cloudhub-ap-northeast-1
 ```
 
 To Clear cache to retrieved Org and Env meta info again, run this sub command.
@@ -519,23 +520,189 @@ $ yaac get runtime-target
 ```
 
 ```
-NAME                     TYPE            ID                                    REGION          STATUS  
-k1                       runtime-fabric  7f29ee88-xxxx-xxxx-9d0b-e108d0b7745d  -               Active  
-t1ps                     private-space   738ce306-xxxx-xxxx-b35b-e11bd5ad7d6c  ap-northeast-1  Active  
-Cloudhub-US-East-2       shared-space    cloudhub-us-east-2                    us-east-2       Active  
-Cloudhub-US-East-1       shared-space    cloudhub-us-east-1                    us-east-1       Active  
-Cloudhub-US-West-1       shared-space    cloudhub-us-west-1                    us-west-1       Active  
-Cloudhub-US-West-2       shared-space    cloudhub-us-west-2                    us-west-2       Active  
-Cloudhub-EU-West-1       shared-space    cloudhub-eu-west-1                    eu-west-1       Active  
-Cloudhub-EU-West-2       shared-space    cloudhub-eu-west-2                    eu-west-2       Active  
-Cloudhub-AP-Southeast-1  shared-space    cloudhub-ap-southeast-1               ap-southeast-1  Active  
-Cloudhub-AP-Southeast-2  shared-space    cloudhub-ap-southeast-2               ap-southeast-2  Active  
-Cloudhub-AP-Northeast-1  shared-space    cloudhub-ap-northeast-1               ap-northeast-1  Active  
-Cloudhub-SA-East-1       shared-space    cloudhub-sa-east-1                    sa-east-1       Active  
-Cloudhub-EU-Central-1    shared-space    cloudhub-eu-central-1                 eu-central-1    Active  
-Cloudhub-CA-Central-1    shared-space    cloudhub-ca-central-1                 ca-central-1    Active  
+NAME                     TYPE            ID                                    REGION          STATUS
+k1                       runtime-fabric  7f29ee88-xxxx-xxxx-9d0b-e108d0b7745d  -               Active
+t1ps                     private-space   738ce306-xxxx-xxxx-b35b-e11bd5ad7d6c  ap-northeast-1  Active
+Cloudhub-US-East-2       shared-space    cloudhub-us-east-2                    us-east-2       Active
+Cloudhub-US-East-1       shared-space    cloudhub-us-east-1                    us-east-1       Active
+Cloudhub-US-West-1       shared-space    cloudhub-us-west-1                    us-west-1       Active
+Cloudhub-US-West-2       shared-space    cloudhub-us-west-2                    us-west-2       Active
+Cloudhub-EU-West-1       shared-space    cloudhub-eu-west-1                    eu-west-1       Active
+Cloudhub-EU-West-2       shared-space    cloudhub-eu-west-2                    eu-west-2       Active
+Cloudhub-AP-Southeast-1  shared-space    cloudhub-ap-southeast-1               ap-southeast-1  Active
+Cloudhub-AP-Southeast-2  shared-space    cloudhub-ap-southeast-2               ap-southeast-2  Active
+Cloudhub-AP-Northeast-1  shared-space    cloudhub-ap-northeast-1               ap-northeast-1  Active
+Cloudhub-SA-East-1       shared-space    cloudhub-sa-east-1                    sa-east-1       Active
+Cloudhub-EU-Central-1    shared-space    cloudhub-eu-central-1                 eu-central-1    Active
+Cloudhub-CA-Central-1    shared-space    cloudhub-ca-central-1                 ca-central-1    Active
 ```
 
+### Deploy Multiple Apps with Manifest
+
+Deploy multiple applications at once using a YAML manifest file. This is useful for deploying entire API ecosystems (System APIs, Process APIs, Experience APIs) in a single command.
+
+```bash
+# Deploy all apps defined in manifest
+$ yaac deploy manifest deploy.yaml
+
+# Dry run - preview what would be deployed
+$ yaac deploy manifest deploy.yaml --dry-run
+
+# Deploy only specific apps
+$ yaac deploy manifest deploy.yaml --only customer-sapi,order-sapi
+```
+
+#### Manifest YAML Schema
+
+```yaml
+# deploy.yaml
+organization: T1
+environment: Production
+
+# Target definitions (key = actual target name from 'yaac get rtt')
+targets:
+  cloudhub-ap-northeast-1:      # CloudHub 2.0 shared space
+    type: ch2
+    instance-type: small        # nano | small | small.mem
+
+  my-rtf-cluster:               # Runtime Fabric cluster
+    type: rtf
+    cpu: [500m, 1000m]          # [reserved, limit]
+    mem: [1200Mi, 1200Mi]       # [reserved, limit]
+
+  leibniz:                      # Hybrid on-premise server
+    type: hybrid
+
+# Application definitions
+apps:
+  # System API
+  - name: customer-sapi
+    asset: T1:customer-sapi:1.0.0    # group:artifact:version
+    target: my-rtf-cluster
+    properties:
+      http.port: 8081
+      db.host: oracle.internal
+      db.port: 1521
+
+  # Another System API
+  - name: order-sapi
+    asset: T1:order-sapi:1.2.3
+    target: my-rtf-cluster
+    properties:
+      http.port: 8082
+
+  # Process API (connects to System APIs)
+  - name: order-papi
+    asset: T1:order-papi:1.0.0
+    target: cloudhub-ap-northeast-1
+    properties:
+      http.port: 8081
+    connects-to:                     # Auto-generates connection URLs
+      - customer-sapi
+      - order-sapi
+
+  # Experience API
+  - name: mobile-eapi
+    asset: T1:mobile-eapi:3.1.0
+    target: cloudhub-ap-northeast-1
+    replicas: 2                      # Override default replicas
+    properties:
+      http.port: 8081
+    connects-to:
+      - order-papi
+```
+
+#### Schema Reference
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `organization` | string | Yes | Business group name |
+| `environment` | string | Yes | Environment name |
+| `targets` | map | Yes | Target definitions (key = target name) |
+| `apps` | list | Yes | List of applications to deploy |
+
+**Target fields:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | string | Yes | `rtf`, `ch2`, or `hybrid` |
+| `cpu` | list | No | RTF only: [reserved, limit] e.g. `[500m, 1000m]` |
+| `mem` | list | No | RTF only: [reserved, limit] e.g. `[1200Mi, 1200Mi]` |
+| `instance-type` | string | No | CH2 only: `nano`, `small`, `small.mem` |
+| `v-cores` | number | No | CH2 only: vCores (legacy pricing) |
+
+**App fields:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Deployed application name |
+| `asset` | string | Yes | Exchange asset in `group:artifact:version` format |
+| `target` | string | Yes | Target name (must exist in `targets`) |
+| `replicas` | int | No | Number of replicas (default: 1) |
+| `properties` | map | No | Application properties (e.g. `http.port`, `db.host`) |
+| `connects-to` | list | No | List of app names to connect to |
+
+#### connects-to Feature
+
+The `connects-to` field automatically generates connection URL properties for referenced apps:
+
+- **RTF**: `http://<app-name>.svc.cluster.local:<port>`
+- **CloudHub 2.0**: `https://<app-name>.cloudhub.io`
+- **Hybrid**: `http://<app-name>:<port>`
+
+Example: If `order-papi` has `connects-to: [customer-sapi]`, it will receive:
+```
+customer-sapi.url=http://customer-sapi.svc.cluster.local:8081
+```
+
+#### Generate Manifest from Mule Apps (--scan)
+
+Automatically generate a manifest YAML by scanning a directory containing Mule applications:
+
+```bash
+# Scan current directory
+$ yaac deploy manifest --scan
+
+# Scan specific directory
+$ yaac deploy manifest --scan ./system-apis
+
+# Use custom config file location
+$ yaac deploy manifest --scan . --config-properties src/main/resources/env/local.yaml
+
+# Save to file
+$ yaac deploy manifest --scan ./system-apis > deploy.yaml
+```
+
+The scan will:
+1. Find all directories containing `pom.xml` with `<packaging>mule-application</packaging>`
+2. Extract GAV (groupId, artifactId, version) from each pom.xml
+3. Read properties from config files (searched in order):
+   - `src/main/resources/config/config.yaml`
+   - `src/main/resources/config/config.properties`
+   - `src/main/resources/config.yaml`
+   - `src/main/resources/config.properties`
+   - Custom path via `--config-properties`
+
+Example output:
+```yaml
+# Generated manifest from scanned Mule applications
+# Found 8 apps: customer-sapi, order-sapi, ...
+# TODO: Update TARGET_NAME with actual target from 'yaac get rtt'
+
+organization: YOUR_ORG
+environment: YOUR_ENV
+targets:
+  TARGET_NAME:
+    type: ch2
+    instance-type: small
+apps:
+- name: customer-sapi
+  asset: com.example:customer-sapi:1.0.0
+  target: TARGET_NAME
+  properties:
+    http.port: 8081
+    db.host: localhost
+```
 
 
 ## Useful Features

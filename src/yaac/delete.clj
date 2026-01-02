@@ -101,7 +101,7 @@
                                      (-> appi :target :provider)
                                      :none))))
 
-;; RTF/CH20
+;; RTF/CH2
 (defmethod -delete-application :mc [org env appi]
   (let [org-id (org->id org)
         env-id (env->id org env)
@@ -131,14 +131,14 @@
   (throw (e/app-not-found "No application" {:org org :env env :app (:name appi)})))
 
 
-(defn delete-application [{:keys [args all]                           
+(defn delete-application [{:keys [args all]
                            :as opts}]
   (let [[app env org] (reverse args) ;; app has to be specified
         org (or org *org*)           ;; If specified, use it
         env (or env *env*)         ;; If specified, use it
         [app target] (reverse (str/split app #"/"))
         ;; Ignore exception for no target here to check later
-        target-id (yc/try-wrap (yc/target->id org env target))] 
+        target-id (yc/try-wrap (yc/target->id org env target))]
 
     (log/debug "Delete application:" (dissoc opts :summary))
     (if-not (and org env app)

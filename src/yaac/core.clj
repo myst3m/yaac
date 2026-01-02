@@ -1355,7 +1355,7 @@
                                (or (= :any runtime-target-id)
                                    ;; Hybrid
                                    (= (-> % :target :id) runtime-target-id)
-                                   ;; CH20
+                                   ;; CH2
                                    (= (-> % :target :target-id) runtime-target-id)
                                    (= (-> % :target :name) runtime-target-id))
                                (or (= (str (:id %)) id-or-name)

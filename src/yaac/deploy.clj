@@ -48,7 +48,7 @@
                   :replicas "number ex. 1,2,..."
                   :runtime-version "string ex. 4.10.1:12e (default: 4.10.1:12e)"
                   :java-version "8 or 17 (default: 17). Combined as runtime-version-java17"]}
-   :ch20 {:assets [:v-cores "number ex. 0.1, 0.2, 0.5, 1, 2, 4 (For classic pricing model)"
+   :ch2 {:assets [:v-cores "number ex. 0.1, 0.2, 0.5, 1, 2, 4 (For classic pricing model)"
                    :runtime-version "string ex. 4.10.1:12e (default: 4.10.1:12e)"
                    :java-version "8 or 17 (default: 17). Combined as runtime-version-java17"
                    :instance-type "string ex. nano, small, small.mem"
@@ -84,7 +84,7 @@
                                 (seq)))
         ""
         "# CloudHub 2.0"
-        (str/join \newline (->> (partition 2 (-> deploy-available-options :ch20 :assets))
+        (str/join \newline (->> (partition 2 (-> deploy-available-options :ch2 :assets))
                                 (map #(format "  - %-25s %-10s" (name (first %)) (second %)))
                                 (seq)))
         ""
@@ -459,29 +459,38 @@
 
 
 ;; deploy app my-app target=rtf:k1
-;; deploy app T1 Production my-app target=ch20:ap-northeasst -g T1 
+;; deploy app T1 Production my-app target=ch2:ap-northeast-1 -g T1
 (defn deploy-application [{:keys [args target]
                            :as opts}]
 
   (log/debug "opts:" (dissoc opts :summary))
   (log/debug "target:" (or target *deploy-target*))
 
-  ;; target is array ["ch20:..."]
+  ;; target is array ["ch2:..." or "rtf:..." etc.]
   
   (if-not (or target *deploy-target*)
     (throw (e/invalid-arguments "No target specified. Use target=<target-name> (e.g., target=cloudhub-ap-northeast-1 or target=hy:<server-name>)"
-                                {:hint "Run 'yaac get target <org> <env>' for CH20/RTF targets, or 'yaac get server <org> <env>' for Hybrid servers."}))
+                                {:hint "Run 'yaac get target <org> <env>' for CH2/RTF targets, or 'yaac get server <org> <env>' for Hybrid servers."}))
     (let [given-target-name (name (or (first target) *deploy-target*))
-          ;; Handle hy: prefix for hybrid/on-premise servers
-          [actual-target-name target-filter] (if (str/starts-with? given-target-name "hy:")
+          ;; Handle prefix for target types: hy:, rtf:, ch2:
+          [actual-target-name target-filter] (cond
+                                               (str/starts-with? given-target-name "hy:")
                                                [(subs given-target-name 3) #(= "SERVER" (:type %))]
+
+                                               (str/starts-with? given-target-name "rtf:")
+                                               [(subs given-target-name 4) #(= "runtime-fabric" (:type %))]
+
+                                               (str/starts-with? given-target-name "ch2:")
+                                               [(subs given-target-name 4) #(contains? #{"cloudhub2" "shared-space" "private-space"} (:type %))]
+
+                                               :else
                                                [given-target-name (constantly true)])
           [org env app] (case (count args)
                           ;; deploy app target=rtf:k1 labels=demo,db (no prefix)
                           0 [*org* *env* ""]
                           ;; deploy app my-app target=rtf:k1
                           1 [*org* *env* (first args)]
-                          ;;  deploy app T1 Production my-app target=ch20:ap-northeasst
+                          ;;  deploy app T1 Production my-app target=ch2:ap-northeast-1
                           3 [(first args) (second args) (last args)]
                           (throw (e/invalid-arguments "Org and Env should be specified or use default context with yaac config command" {:args args :target target})))
 
@@ -509,7 +518,7 @@
                 (#{:hybrid :server} target-type) (-deploy-hybrid-application (assoc opts :args n-args))
                 :else (throw (e/runtime-target-not-found "No specified target type." {:target-type target-type :target-name target-name})))))))
 
-;; This is for RTF/CH20
+;; This is for RTF/CH2
 ;; https://anypoint.mulesoft.com/exchange/portals/anypoint-platform/f1e97bc6-315a-4490-82a7-23abe036327a.anypoint-platform/proxies-xapi/minor/1.0/pages/Getting%20Started/
 
 (defn deploy-api-proxy [{:keys [args target name]}]
@@ -521,13 +530,13 @@
           [org env api api-id] (case (count args)
                                  ;; deploy proxy my-api target=rtf:k1
                                  1 [*org* *env* (first args) (yc/api->id *org* *env* (first args))]
-                                 ;;  deploy proxy T1 Production my-api target=ch20:ap-northeasst
+                                 ;;  deploy proxy T1 Production my-api target=ch2:ap-northeast-1
                                  3 [(first args) (second args) (last args) (yc/api->id (first args) (second args) (last args))]
                                  (throw (e/invalid-arguments "Org and Env should be specified or use default context with yaac config command" {:args args :target target})))
 
           [type target-type target-name target-id] (cond
                                                      (#{:rtf :runtime-fabric} (keyword runtime-target)) ["RF" "runtime-fabric" cluster (yc/rtf->id org cluster)]
-                                                     (#{:ch20 :cloudhub2} (keyword runtime-target)) ["CH2" "shared-space" (csk/->HTTP-Header-Case cluster) cluster]
+                                                     (#{:ch2 :cloudhub2} (keyword runtime-target)) ["CH2" "shared-space" (csk/->HTTP-Header-Case cluster) cluster]
                                                      (#{:hy :hybrid} (keyword runtime-target)) ["HY" "server" (str cluster) (str (yc/hybrid-server->id org env cluster))]
                                                      (#{:fg :flex :flexgateway} (keyword runtime-target)) ["HY" "server" cluster (yc/gw->id org env cluster)]
                                                      :else (throw (e/not-implemented "Not implemented" {:args args :target target})))]
