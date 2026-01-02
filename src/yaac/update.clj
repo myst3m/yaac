@@ -51,6 +51,7 @@
         "    - state=<start|stop>"
         "  asset"
         "    - labels"
+        "    Note: -g defaults to current org, -v defaults to latest version"
         "  api"
         "    - asset-version"
         "  org|organization"
@@ -83,8 +84,11 @@
         "# Add tags db, demo to specified asset"
         "  > yaac update app hello-world v-cores=0.2 replicas=2"
         ""
-        "# Add tags db, demo to specified asset"
+        "# Add tags db, demo to specified asset (with explicit group and version)"
         "  > yaac update asset labels=db,demo -g T1 -a hello-api -v 0.1.0"
+        ""
+        "# Add tags to asset in current org with latest version"
+        "  > yaac update asset -a hello-api labels=db,demo"
         ""
         "# Update API version with given asset version"
         "  > yaac update api hello-api asset-version=0.2.0"
@@ -131,14 +135,22 @@
 
 (defn update-asset-config [{:keys [group asset version labels]
                             :as opts}]
-  (if-not (and group asset version)
-    (throw (e/invalid-arguments "Group, asset and version are required" {:group group :asset asset}))
-    (let [group-id (org->id group)
-          url (format (gen-url "/exchange/api/v2/organizations/%s/assets/%s/%s/%s/mutabledata") group-id group-id asset version)
-          multipart [{:name "tags" :content (str/join "," labels)}]]
-      (-> @(http/patch url {:headers (yc/multipart-headers)
-                           :multipart multipart})
-          (parse-response)))))
+  (when-not asset
+    (throw (e/invalid-arguments "Asset name is required" {:asset asset})))
+  (let [group (or group yc/*org*)
+        group-id (yc/org->id group)
+        ;; Get latest version if not specified
+        version (or version
+                    (let [assets (yc/get-assets {:group group :asset asset})]
+                      (when (empty? assets)
+                        (throw (e/no-item "Asset not found" {:group group :asset asset})))
+                      (:version (first assets))))
+        url (format (gen-url "/exchange/api/v2/organizations/%s/assets/%s/%s/%s/mutabledata")
+                    group-id group-id asset version)
+        multipart [{:name "tags" :content (str/join "," labels)}]]
+    (-> @(http/patch url {:headers (yc/multipart-headers)
+                         :multipart multipart})
+        (parse-response))))
 
 (defn update-api-config [{:keys [args asset-version] :as opts}]
   (let [asset-version (first asset-version)
