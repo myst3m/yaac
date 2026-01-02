@@ -36,7 +36,7 @@
         "Resources:"
         ""
         "  - app [org] [env] <app> key=val       ...                    "
-        "  - asset -g <group> -a <asset> key=val ...                    "
+        "  - asset <asset> key=val               ...                    "
         "  - api [org] [env] <api> key=val       ...                    "
         "  - org [org] key=val                   ...                    "
         "  - conn [org] <private-space> <connection> ... key=val  "
@@ -85,10 +85,10 @@
         "  > yaac update app hello-world v-cores=0.2 replicas=2"
         ""
         "# Add tags db, demo to specified asset (with explicit group and version)"
-        "  > yaac update asset labels=db,demo -g T1 -a hello-api -v 0.1.0"
+        "  > yaac update asset hello-api labels=db,demo -g T1 -v 0.1.0"
         ""
         "# Add tags to asset in current org with latest version"
-        "  > yaac update asset -a hello-api labels=db,demo"
+        "  > yaac update asset hello-api labels=db,demo"
         ""
         "# Update API version with given asset version"
         "  > yaac update api hello-api asset-version=0.2.0"
@@ -133,11 +133,14 @@
                :id :allow-local-client-deletion]])
 
 
-(defn update-asset-config [{:keys [group asset version labels]
+(defn update-asset-config [{:keys [args group asset version labels]
                             :as opts}]
-  (when-not asset
-    (throw (e/invalid-arguments "Asset name is required" {:asset asset})))
-  (let [group (or group yc/*org*)
+  (let [;; Asset can come from args or -a option
+        asset (or (first args) asset)
+        _ (when-not asset
+            (throw (e/invalid-arguments "Asset name is required" {:asset asset})))
+        ;; Group defaults to current org
+        group (or group yc/*org*)
         group-id (yc/org->id group)
         ;; Get latest version if not specified
         version (or version
