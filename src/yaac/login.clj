@@ -91,11 +91,11 @@
     set-session!))
 
 (defmethod -login :client-credentials [_ & {:keys [client-id client-secret]}]
-  (->> {:headers {"Content-Type" "application/json"}
-        :body (edn->json :snake {:client-id client-id
-                                 :client-secret client-secret
-                                 :grant-type "client_credentials"})}
-       (http/post (gen-url "/accounts/api/v2/oauth2/token"))
+  (->> @(http/post (gen-url "/accounts/api/v2/oauth2/token")
+                   {:headers {"Content-Type" "application/json"}
+                    :body (edn->json :snake {:client-id client-id
+                                             :client-secret client-secret
+                                             :grant-type "client_credentials"})})
        (parse-response)
        :body
        (set-session!)))

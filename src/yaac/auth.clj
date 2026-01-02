@@ -77,7 +77,7 @@
   (rh/ring-handler
    (rh/router [["/oauth2/callback" {:get (fn [{:keys [params] :as req}]
                                            (let [{:strs [code state]} params]
-                                             (-> (http/post (str "https://login.microsoftonline.com/" tenant "/oauth2/v2.0/token")
+                                             (-> @(http/post (str "https://login.microsoftonline.com/" tenant "/oauth2/v2.0/token")
                                                             (doto {:form-params {:client_id client-id
                                                                             :scope scope
                                                                             :code code

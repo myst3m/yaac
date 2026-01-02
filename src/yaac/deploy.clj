@@ -191,7 +191,7 @@
 
 (defn -deploy-rtf-application [{:keys [args labels cpu mem replicas group asset version runtime-version java-version search-term]
                                 [cluster org env app-or-prefix] :args
-                                :or {cpu ["450m" "550m"] mem ["1200Mi" "1200Mi"] replicas ["1"] runtime-version ["4.10.1:12e"] java-version ["17"]}
+                                :or {cpu ["400m" "2000m"] mem ["1000Mi" "1500Mi"] replicas ["1"] runtime-version ["4.10.1:12e"] java-version ["17"]}
                                 :as opts}]
   (let [many-deploys? (or (some? labels) (some? search-term))
         ;; Resource

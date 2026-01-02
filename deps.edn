@@ -19,17 +19,17 @@
         com.github.seancorfield/next.jdbc {:mvn/version "1.3.939"}
         com.mysql/mysql-connector-j {:mvn/version "8.4.0"}
         io.gitlab.myst3m/silvur {:git/url "https://gitlab.com/myst3m/silvur.git"
-                                  :sha "1492bed427965e1d1de2d87b09b4cae48fe7caee"
+                                  :sha "a3ef3c72da3c7b57a3fd6b83d740ef98f3007fd3"
                                   :exclusions [com.cognitect/transit-clj
                                                buddy/buddy
                                                twitter-api/twitter-api]}
-        io.gitlab.myst3m/zeph {:git/url "https://gitlab.com/myst3m/zeph.git"
-                               :sha "310d07bbcde2c3efb04e5d343052a4869e82342e"}
+        io.gitlab.myst3m/zeph {:local/root "/home/myst/projects/zeph"}
         org.mule.weave/runtime {:mvn/version "2.9.1"}
         org.mule.weave/core-modules {:mvn/version "2.9.1"}
         org.mule.weave/java-module {:mvn/version "2.9.1"}
         org.mule.weave/yaml-module {:mvn/version "2.9.1"}
-        com.github.clj-easy/graal-build-time {:mvn/version "1.0.5"}}
+        com.github.clj-easy/graal-build-time {:mvn/version "1.0.5"}
+        metosin/malli {:mvn/version "0.16.4"}}
 
  :aliases {:test {:extra-paths ["test"]
                   :extra-deps {org.clojure/test.check {:mvn/version "0.10.0"}}}
