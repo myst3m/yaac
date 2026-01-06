@@ -310,45 +310,44 @@
                       [target-port] target-port
                       full-runtime-version (build-runtime-version runtime-version java-version)]
 
-                  (-> {:headers (default-headers)
-                       :body (edn->json (cond-> {:application
-                                                 {:ref {:groupId asset-group-id
-                                                        :artifactId asset-name
-                                                        :version version
-                                                        :packaging "jar"}
-                                                  :integrations {:services {:objectStoreV2 {:enabled false}}}
-                                                  :assets []
-                                                  :desiredState "STARTED"
-                                                  :configuration {:mule.agent.logging.service {:scopeLoggingConfigurations []}
-                                                                  :mule.agent.application.properties.service
-                                                                  {:properties (->> opts
-                                                                                    (filter #(re-find #"^\+" (name (first %))))
-                                                                                    (map (fn [[k v]] [(keyword (subs (name k) 1)) (str/join "," v)]))
-                                                                                    (into {}))
-                                                                   :secureProperties {}
-                                                                   :applicationName target-app-name}}}
-                                                 :name target-app-name
-                                                 :target {:targetId target-id
-                                                          :replicas (parse-long (first replicas))
-                                                          :provider "MC"
-                                                          :deploymentSettings (cond-> {:updateStrategy "rolling"
-                                                                                       :enforceDeployingReplicasAcrossNodes false
-                                                                                       :forwardSslSession false
-                                                                                       :generateDefaultPublicUrl true
-                                                                                       :persistentObjectStore false
-                                                                                       :jvm {}
-                                                                                       :lastMileSecurity false
-                                                                                       :http {:inbound {:pathRewrite nil}}
-                                                                                       :disableAmLogForwarding false
-                                                                                       :clustered clustered}
-                                                                                full-runtime-version (assoc :runtimeVersion full-runtime-version)
-                                                                                node-port (assoc :tcp {:inbound
-                                                                                                       {:ports [{:portNumber (parse-long node-port)
-                                                                                                                 :applicationPortNumber (or (parse-long target-port) 8081)}]}}))}}
-                                          (and (not v-cores) instance-type) (assoc-in [:target :deploymentSettings :instanceType] (str "mule." (first instance-type)))
-                                          v-cores (assoc-in [:application :vCores] (as-> (parse-double (first v-cores)) x
-                                                                                     (if (= 0.0 (mod x 1)) (long x) x)) )))}
-                      (->> @(http-fn url))
+                  (-> @(http-fn url {:headers (default-headers)
+                                      :body (edn->json (cond-> {:application
+                                                                {:ref {:groupId asset-group-id
+                                                                       :artifactId asset-name
+                                                                       :version version
+                                                                       :packaging "jar"}
+                                                                 :integrations {:services {:objectStoreV2 {:enabled false}}}
+                                                                 :assets []
+                                                                 :desiredState "STARTED"
+                                                                 :configuration {:mule.agent.logging.service {:scopeLoggingConfigurations []}
+                                                                                 :mule.agent.application.properties.service
+                                                                                 {:properties (->> opts
+                                                                                                   (filter #(re-find #"^\+" (name (first %))))
+                                                                                                   (map (fn [[k v]] [(keyword (subs (name k) 1)) (str/join "," v)]))
+                                                                                                   (into {}))
+                                                                                  :secureProperties {}
+                                                                                  :applicationName target-app-name}}}
+                                                                :name target-app-name
+                                                                :target {:targetId target-id
+                                                                         :replicas (parse-long (first replicas))
+                                                                         :provider "MC"
+                                                                         :deploymentSettings (cond-> {:updateStrategy "rolling"
+                                                                                                      :enforceDeployingReplicasAcrossNodes false
+                                                                                                      :forwardSslSession false
+                                                                                                      :generateDefaultPublicUrl true
+                                                                                                      :persistentObjectStore false
+                                                                                                      :jvm {}
+                                                                                                      :lastMileSecurity false
+                                                                                                      :http {:inbound {:pathRewrite nil}}
+                                                                                                      :disableAmLogForwarding false
+                                                                                                      :clustered clustered}
+                                                                                               full-runtime-version (assoc :runtimeVersion full-runtime-version)
+                                                                                               node-port (assoc :tcp {:inbound
+                                                                                                                      {:ports [{:portNumber (parse-long node-port)
+                                                                                                                                :applicationPortNumber (or (parse-long target-port) 8081)}]}}))}}
+                                                         (and (not v-cores) instance-type) (assoc-in [:target :deploymentSettings :instanceType] (str "mule." (first instance-type)))
+                                                         v-cores (assoc-in [:application :vCores] (as-> (parse-double (first v-cores)) x
+                                                                                                    (if (= 0.0 (mod x 1)) (long x) x)))))})
                       (parse-response)
                       :body
                       (as-> payload

@@ -135,6 +135,8 @@ Update resource configurations.
 | `update org` | Update organization entitlements |
 | `update conn` | Update CloudHub 2.0 connection |
 | `update connected-app` | Update Connected App scopes |
+| `update upstream` | Update API instance upstream URI |
+| `update policy` | Update API policy configuration (e.g., JWT JWKS URL) |
 
 ### config
 Configure CLI settings.
@@ -963,6 +965,33 @@ yaac describe connected-app myapp
 ```bash
 yaac delete connected-app myapp
 ```
+
+## API Instance Management
+
+### Update Upstream URI
+
+Update the upstream URI for a Flex Gateway API instance:
+
+```bash
+# Update upstream URI for API instance
+yaac update upstream Org Sandbox 20671224 --upstream-uri http://172.23.0.9:8081/
+```
+
+### Update Policy Configuration
+
+Update policy settings (e.g., JWT validation JWKS URL) by policy name:
+
+```bash
+# List policies for an API instance
+yaac get policy Org Sandbox 20671224
+
+# Update JWT policy JWKS URL
+yaac update policy Org Sandbox 20671224 jwt-validation-flex --jwks-url http://172.23.0.15:8081/jwks.json
+```
+
+**Notes:**
+- Policy is specified by asset-id (e.g., `jwt-validation-flex`), not numeric policy ID
+- Use `yaac get policy` to find the correct policy asset-id
 
 ## Todo
 

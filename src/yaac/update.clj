@@ -15,7 +15,7 @@
             [taoensso.timbre :as log]
             [zeph.client :as http]
             [reitit.core :as r]
-            [yaac.core :refer [*org* *env* parse-response default-headers org->id env->id api->id org->name ps->id conn->id load-session! gen-url assign-connected-app-scopes connected-app->id -get-root-organization -get-client-provider client-provider->id] :as yc]
+            [yaac.core :refer [*org* *env* parse-response default-headers org->id env->id api->id org->name ps->id conn->id load-session! gen-url assign-connected-app-scopes connected-app->id -get-root-organization -get-client-provider client-provider->id -get-api-upstreams -patch-api-upstream -get-api-policy -patch-api-policy policy-name->id] :as yc]
             [yaac.error :as e]
             [clojure.string :as str]
             [clojure.tools.cli :refer [parse-opts]]
@@ -42,6 +42,8 @@
         "  - conn [org] <private-space> <connection> ... key=val  "
         "  - connected-app <name-or-client-id> --scopes ... --org-scopes ..."
         "  - client-provider <name-or-id> --name ... --authorize-url ..."
+        "  - upstream [org] [env] <api> --upstream-uri <uri>"
+        "  - policy [org] [env] <api> <policy-name> --jwks-url <url>"
         ""
         "Keys:"
         "  app"
@@ -78,6 +80,10 @@
         "    - --allow-client-import               : Allow client import (true/false)"
         "    - --allow-external-client-modification: Allow external modification (true/false)"
         "    - --allow-local-client-deletion       : Allow local deletion (true/false)"
+        "  upstream"
+        "    - --upstream-uri                      : Upstream URI for API instance"
+        "  policy"
+        "    - --jwks-url                          : JWKS URL for JWT validation policy"
         ""
         "Example:"
         ""
@@ -98,6 +104,12 @@
         ""
         "# Update connected app scopes"
         "  > yaac update connected-app myapp --scopes profile --org-scopes read:organization --env-scopes read:applications --env Production,Sandbox"
+        ""
+        "# Update API instance upstream URI"
+        "  > yaac update upstream Org Sandbox 20671224 --upstream-uri http://172.23.0.9:8081/"
+        ""
+        "# Update JWT policy JWKS URL"
+        "  > yaac update policy Org Sandbox 20671224 jwt-validation --jwks-url http://172.23.0.15:8081/jwks.json"
         ""]
        (str/join \newline)))
 
@@ -130,7 +142,13 @@
               [nil "--allow-external-client-modification BOOL" "Allow external client modification (true/false)"
                :id :allow-external-client-modification]
               [nil "--allow-local-client-deletion BOOL" "Allow local client deletion (true/false)"
-               :id :allow-local-client-deletion]])
+               :id :allow-local-client-deletion]
+              ;; API upstream options
+              [nil "--upstream-uri URI" "Upstream URI for API instance"
+               :id :upstream-uri]
+              ;; API policy options
+              [nil "--jwks-url URL" "JWKS URL for JWT validation policy"
+               :id :jwks-url]])
 
 
 (defn update-asset-config [{:keys [args group asset version labels]
@@ -396,6 +414,51 @@
     [{:extra {:client-id client-id
               :scopes (str/join "," all-scopes)}}]))
 
+;; API Upstream update
+(defn update-api-upstream
+  "Update API instance upstream URI"
+  [{:keys [args upstream-uri] :as opts}]
+  (let [[api env org] (reverse args)
+        org (or org *org*)
+        env (or env *env*)]
+    (when-not (and org env api)
+      (throw (e/invalid-arguments "Org, Env and API need to be specified" {:args args})))
+    (when-not upstream-uri
+      (throw (e/invalid-arguments "upstream-uri is required" {:args args})))
+    (let [upstreams (-get-api-upstreams org env api)
+          upstream-id (-> upstreams :upstreams first :id)]
+      (if upstream-id
+        (do
+          (-patch-api-upstream org env api upstream-id upstream-uri)
+          [{:extra {:api-id api
+                    :upstream-id upstream-id
+                    :uri upstream-uri
+                    :status "updated"}}])
+        (throw (e/no-item "No upstream found for this API instance" {:api api}))))))
+
+;; API Policy update
+(defn update-api-policy
+  "Update API policy configuration by policy name (asset-id)"
+  [{:keys [args jwks-url] :as opts}]
+  (let [[policy-name api env org] (reverse args)
+        org (or org *org*)
+        env (or env *env*)]
+    (when-not (and org env api policy-name)
+      (throw (e/invalid-arguments "Org, Env, API and policy-name need to be specified" {:args args})))
+    (when-not jwks-url
+      (throw (e/invalid-arguments "At least one policy option (e.g. --jwks-url) is required" opts)))
+    (if-let [policy-id (policy-name->id org env api policy-name)]
+      (let [current-policy (-get-api-policy org env api policy-id)
+            current-config (:configuration-data current-policy)
+            updated-config (cond-> current-config
+                             jwks-url (assoc :jwks-url jwks-url))]
+        (-patch-api-policy org env api policy-id updated-config)
+        [{:extra {:api-id api
+                  :policy-name policy-name
+                  :policy-id policy-id
+                  :status "updated"}}])
+      (throw (e/no-item (str "Policy '" policy-name "' not found for API " api) {:api api :policy-name policy-name})))))
+
 (def route
   ["update" {:options options
              :usage usage}
@@ -436,4 +499,12 @@
                    :handler update-client-provider}]
    ["|client-provider" {:help true}]
    ["|client-provider|{*args}" {:fields [[:extra :name] [:extra :id] [:extra :type]]
-                                 :handler update-client-provider}]])
+                                 :handler update-client-provider}]
+   ;; API Upstream
+   ["|upstream" {:help true}]
+   ["|upstream|{*args}" {:fields [[:extra :api-id] [:extra :upstream-id] [:extra :uri] [:extra :status]]
+                         :handler update-api-upstream}]
+   ;; API Policy
+   ["|policy" {:help true}]
+   ["|policy|{*args}" {:fields [[:extra :api-id] [:extra :policy-name] [:extra :policy-id] [:extra :status]]
+                       :handler update-api-policy}]])

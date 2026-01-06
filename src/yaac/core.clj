@@ -1549,6 +1549,67 @@
            (-get-automated-api-policies org env))
          (filter #((set (or (seq types) ["automated" "regular"])) (-> % :extra :type))))))
 
+;; Upstream API functions
+(defn -get-api-upstreams
+  "Get upstreams for an API instance"
+  [org env api]
+  (let [org-id (org->id (or org *org*))
+        env-id (env->id org-id (or env *env*))
+        api-id (api->id org-id env-id api)]
+    (-> @(http/get (format (gen-url "/apimanager/api/v1/organizations/%s/environments/%s/apis/%s/upstreams")
+                          org-id env-id api-id)
+                  {:headers (default-headers)})
+        (parse-response)
+        :body)))
+
+(defn -patch-api-upstream
+  "Update an API upstream URI"
+  [org env api upstream-id uri]
+  (let [org-id (org->id (or org *org*))
+        env-id (env->id org-id (or env *env*))
+        api-id (api->id org-id env-id api)]
+    (-> @(http/patch (format (gen-url "/apimanager/api/v1/organizations/%s/environments/%s/apis/%s/upstreams/%s")
+                            org-id env-id api-id upstream-id)
+                    {:headers (default-headers)
+                     :body (edn->json {:uri uri})})
+        (parse-response)
+        :body)))
+
+;; Policy API functions
+(defn -get-api-policy
+  "Get a specific policy for an API instance by policy-id"
+  [org env api policy-id]
+  (let [org-id (org->id (or org *org*))
+        env-id (env->id org-id (or env *env*))
+        api-id (api->id org-id env-id api)]
+    (-> @(http/get (format (gen-url "/apimanager/api/v1/organizations/%s/environments/%s/apis/%s/policies/%s")
+                          org-id env-id api-id policy-id)
+                  {:headers (default-headers)})
+        (parse-response)
+        :body)))
+
+(defn -patch-api-policy
+  "Update an API policy configuration"
+  [org env api policy-id config-data]
+  (let [org-id (org->id (or org *org*))
+        env-id (env->id org-id (or env *env*))
+        api-id (api->id org-id env-id api)]
+    (-> @(http/patch (format (gen-url "/apimanager/api/v1/organizations/%s/environments/%s/apis/%s/policies/%s")
+                            org-id env-id api-id policy-id)
+                    {:headers (default-headers)
+                     :body (edn->json {:configurationData config-data})})
+        (parse-response)
+        :body)))
+
+(defn policy-name->id
+  "Convert policy asset-id (name) to policy-id"
+  [org env api policy-name]
+  (let [policies (-get-api-policies org env api)]
+    (->> policies
+         (filter #(= policy-name (-> % :extra :asset-id)))
+         first
+         :extra
+         :id)))
 
 ;; Need Titanium subscription
 (defn -get-monitoring-entity-id [org env entity-type]

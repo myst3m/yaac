@@ -59,6 +59,9 @@
                                ;; Performance
                                "-O2"
                                "-march=native"
+                               ;; Resource limits
+                               "-J-Xmx8g"
+                               "-J-XX:ActiveProcessorCount=4"
                                ;; Debug
                                "-H:+ReportExceptionStackTraces"]})
     (println "Native image built:" native-image-name)))
