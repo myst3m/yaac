@@ -1,0 +1,62 @@
+#%RAML 1.0
+title: httpbin.org API
+version: v1
+
+baseUri: https://httpbin.org
+
+types:
+  Response:
+    type: object
+    properties:
+      status_code: integer
+      message: string
+
+/get:
+  get:
+    description: Get the current IP address.
+    responses:
+      200:
+        body:
+          application/json:
+            type: Response
+
+/user-agent:
+  get:
+    description: Get the user agent string of the client.
+    responses:
+      200:
+        body:
+          application/json:
+            type: Response
+
+/headers:
+  get:
+    description: Get the request headers.
+    responses:
+      200:
+        body:
+          application/json:
+            type: Response
+
+/get?show_env=1:
+  get:
+    description: Get the environment variables.
+    responses:
+      200:
+        body:
+          application/json:
+            type: Response
+
+/post:
+  post:
+    description: Post data to the server.
+    body:
+      application/json:
+        type: object
+      application/x-www-form-urlencoded:
+        type: object
+    responses:
+      200:
+        body:
+          application/json:
+            type: Response

@@ -1,0 +1,46 @@
+#%RAML 1.0
+title: JSONPlaceholder API
+version: v1
+baseUri: https://jsonplaceholder.typicode.com
+
+/users:
+  displayName: Users
+  description: Represents a collection of users.
+  get:
+    description: Retrieve a list of users.
+  /{userId}:
+    uriParameters:
+      userId:
+        description: The ID of the user to retrieve.
+    get:
+      description: Retrieve a specific user by ID.
+    put:
+      description: Update a specific user by ID.
+    delete:
+      description: Delete a specific user by ID.
+
+/posts:
+  displayName: Posts
+  description: Represents a collection of posts.
+  get:
+    description: Retrieve a list of posts.
+  post:
+    description: Create a new post.
+  /{postId}:
+    uriParameters:
+      postId:
+        description: The ID of the post to retrieve.
+    get:
+      description: Retrieve a specific post by ID.
+    put:
+      description: Update a specific post by ID.
+    delete:
+      description: Delete a specific post by ID.
+
+/posts/{postId}/comments:
+  displayName: Comments
+  description: Represents a collection of comments for a post.
+  get:
+    description: Retrieve a list of comments for a post.
+  post:
+    description: Create a new comment for a post.

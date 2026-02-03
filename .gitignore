@@ -1,0 +1,49 @@
+# Build outputs
+target/
+classes/
+
+# Temporary files
+pom-*.xml
+*.tmp
+*.bak
+*~
+\#*\#
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.nrepl-port
+
+# Clojure caches
+.cpcache/
+.lsp/
+.clj-kondo/
+
+# Native image artifacts
+*.o
+libinstrument.so
+
+# Local config
+.env
+.env.local
+
+# Reports
+reports/
+
+# Traces
+traces/
+
+# MacOS
+.DS_Store
+
+# Test files
+test.dwl
+
+# Claude Code (prevents "Co-work with Claude" prompt)
+.claude/
+
+# Personal/local files
+.studio_analytics_id.txt
+.projectile
+examples/

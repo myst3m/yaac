@@ -1,0 +1,13 @@
+[
+  {
+    "type":"agent-extracted",
+    "classes":[
+      { "nameInfo":"muuntaja/protocols$eval3", "hash":"a7rMoH5L0hEHYa7jcuE0AD" },
+      { "nameInfo":"muuntaja/protocols$eval1", "hash":"zHjnhek6S8BBX1fnWcmdn9" },
+      { "nameInfo":"muuntaja/protocols$eval3$fn__4", "hash":"4lIFqH55MEJUwOLFdwEXCJ" },
+      { "nameInfo":"muuntaja/protocols$eval7", "hash":"nmCzdIPLTR7EsYBfuPqpoK" },
+      { "nameInfo":"muuntaja/protocols$eval7$fn__8", "hash":"Pidv4i5xAFJjZIwHnEYF3G" }
+    ]
+  }
+]
+

@@ -1,0 +1,24 @@
+#%RAML 1.0
+title: DummyJSON API
+version: v1
+baseUri: https://dummyjson.com
+
+/products:
+  displayName: Products
+  description: Represents a collection of products.
+  get:
+    description: Retrieve a list of products.
+  /add:
+    post:
+      description: Add product
+          
+  /{productId}:
+    uriParameters:
+      productId:
+        description: The ID of the product to retrieve.
+    get:
+      description: Retrieve a specific product by ID.
+    put:
+      description: Update a specific product by ID.
+    delete:
+      description: Delete a specific product by ID.
