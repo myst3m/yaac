@@ -965,7 +965,7 @@
 (def route
   (concat
    ;; delete command
-   (for [op ["del" "delete"]]
+   (for [op ["remove" "rm" "del" "delete"]]
      [op {:options options
           :usage delete-usage}
       ["" {:help true}]

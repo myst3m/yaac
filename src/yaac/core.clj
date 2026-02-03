@@ -2029,10 +2029,8 @@
 
 
 
-(def route
-  ["get" {:options options
-          :usage usage}
-   ["" {:help true}]   
+(def ^:private route-body
+  [["" {:help true}]
    ["|-h" {:help true}]
    ["|" {:fields [:name :id :parent-name]
          :formatter format-org-all
@@ -2241,6 +2239,10 @@
                   [:extra :api-id] [:extra :app-id] [:extra :resource-type]]}
     ["alert"]
     ["alert|{*args}"]]])
+
+(def route
+  (for [op ["list" "ls" "get"]]
+    (into [op {:options options :usage usage}] route-body)))
 
 
 

@@ -556,7 +556,7 @@
 
 
 (def route
-  (for [op ["dep" "deploy"]]
+  (for [op ["deploy" "dep"]]
     [op {:options options
          :usage usage}
      ["" {:help true}]

@@ -39,7 +39,7 @@
             [yaac.http :as yh]
             [yaac.manifest :as manifest]))
 
-(def version "0.8.1")
+(def version "0.9.0")
 
 ;;; main
 
@@ -54,18 +54,18 @@
         ""
         "Actions:"
         ""
-        "  login     ...                                            Login and save token on local storage"
-        "  get       org|env|asset|app|api|rtf|ps|rtt|server ...    List resources"
-        "  upload    asset ...                                      Upload assets and apps"
-        "  deploy    app|proxy|manifest ...                         Deploy applications"
-        "  delete    org|app|asset ...                              Delete assets"
-        "  create    org|env|api ...                                Create resources"
-        "  describe  app|asset ...                                  Describe resources"
-        "  update    asset|api ...                                  Update resources configs"
-        "  download  proxy ...                                      Download proxies as Jar file"
-        "  config    context|credential|clear-cache ...             Configurate contexts"
-        "  auth      azure                                          OAuth2 authorization code flow"
-        "  http      -                                              Request HTTP to an application"
+        "  login      ...                                            Login and save token on local storage"
+        "  list       org|env|asset|app|api|rtf|ps|rtt|server ...    List resources (aliases: ls, get)"
+        "  upload     asset ...                                      Upload assets and apps (alias: up)"
+        "  deploy     app|proxy|manifest ...                         Deploy applications (alias: dep)"
+        "  remove     org|app|asset ...                              Delete resources (aliases: rm, del, delete)"
+        "  create     org|env|api ...                                Create resources (alias: new)"
+        "  describe   app|asset ...                                  Describe resources (alias: desc)"
+        "  update     asset|api ...                                  Update resources configs (alias: upd)"
+        "  download   proxy ...                                      Download proxies as Jar file (alias: dl)"
+        "  configure  context|credential|clear-cache ...             Configure contexts (aliases: config, cfg)"
+        "  auth       azure                                          OAuth2 authorization code flow"
+        "  http       -                                              Request HTTP to an application"
 ;;        "  dw        [script-path] [input-payload]                  Execute DataWeave scripts"
         ""
         "Please refer to the manual page for more information."

@@ -208,7 +208,7 @@
          scopes)))
 
 (def route
-  (for [op ["desc" "describe"]]
+  (for [op ["describe" "desc"]]
     [op {:options options
          :usage usage}
      ["" {:help true}]   

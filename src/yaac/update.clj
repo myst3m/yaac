@@ -451,10 +451,11 @@
       (throw (e/no-item (str "Policy '" policy-name "' not found for API " api) {:api api :policy-name policy-name})))))
 
 (def route
-  ["update" {:options options
-             :usage usage}
-   ["" {:help true}]   
-   ["|-h" {:help true}]
+  (for [op ["update" "upd"]]
+    [op {:options options
+         :usage usage}
+     ["" {:help true}]
+     ["|-h" {:help true}]
    ["|app" {:help true}]
    ["|app|{*args}" {:fields [[:extra :id]
                              [:extra :name]
@@ -497,5 +498,5 @@
                          :handler update-api-upstream}]
    ;; API Policy
    ["|policy" {:help true}]
-   ["|policy|{*args}" {:fields [[:extra :api-id] [:extra :policy-name] [:extra :policy-id] [:extra :status]]
-                       :handler update-api-policy}]])
+     ["|policy|{*args}" {:fields [[:extra :api-id] [:extra :policy-name] [:extra :policy-id] [:extra :status]]
+                         :handler update-api-policy}]]))

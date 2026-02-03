@@ -116,7 +116,7 @@
 
 
 (def route
-  (for [op ["conf" "config"]]
+  (for [op ["configure" "config" "cfg"]]
     [op {:options  options
          :usage    usage
          :no-token true

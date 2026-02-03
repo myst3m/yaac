@@ -812,7 +812,7 @@
         (yc/add-extra-fields ps-resp :name :name :status :status :region :region)))))
 
 (def route
-  (for [op ["c" "create"]]
+  (for [op ["create" "new"]]
     [op {:options options
          :usage usage}
      ["" {:help true}]   

@@ -88,13 +88,14 @@
 
 
 (def route
-  ["download" {:options options
-               :usage usage}
-   ["" {:help true}]   
-   ["|-h" {:help true}]
-   ["|proxy" {:help true}] 
-   ["|proxy|{*args}" {:fields [:status]
-                      :handler download-api-proxies}]
-   ["|api" {:help true}]
-   ["|api|{*args}" {:fields [:status :path]
-                    :handler download-api-proxies}]])
+  (for [op ["download" "dl"]]
+    [op {:options options
+         :usage usage}
+     ["" {:help true}]
+     ["|-h" {:help true}]
+     ["|proxy" {:help true}]
+     ["|proxy|{*args}" {:fields [:status]
+                        :handler download-api-proxies}]
+     ["|api" {:help true}]
+     ["|api|{*args}" {:fields [:status :path]
+                      :handler download-api-proxies}]]))

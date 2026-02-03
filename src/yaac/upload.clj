@@ -233,7 +233,7 @@
         :else (throw (e/not-supported-file-type "No JAR/ZIP, RAML or OAS" {:file file-path}))))))
 
 (def route
-  (for [op ["up" "upload"]]
+  (for [op ["upload" "up"]]
     [op {:options options
          :usage usage}
      ["" {:help true}]   
