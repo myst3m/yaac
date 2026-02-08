@@ -2070,8 +2070,9 @@
                   :name
                   :id
                   [:extra :status]
+                  [:application :status :as "applied"]
                   [:extra :target]]
-         
+
          :handler get-deployed-applications}
     ["app"]
     ["app|{*args}"]

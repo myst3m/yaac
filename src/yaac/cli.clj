@@ -37,7 +37,8 @@
             [jansi-clj.core :as jansi]
             [yaac.auth :as auth]
             [yaac.http :as yh]
-            [yaac.manifest :as manifest]))
+            [yaac.manifest :as manifest]
+            [yaac.maven :as maven]))
 
 (def version "0.9.0")
 
@@ -65,6 +66,7 @@
         "  download   proxy ...                                      Download proxies as Jar file (alias: dl)"
         "  configure  context|credential|clear-cache ...             Configure contexts (aliases: config, cfg)"
         "  auth       azure                                          OAuth2 authorization code flow"
+        "  build      <goals...>                                      Run Maven goals (embedded)"
         "  http       -                                              Request HTTP to an application"
 ;;        "  dw        [script-path] [input-payload]                  Execute DataWeave scripts"
         ""
@@ -351,6 +353,51 @@
 
 
     (cond
+      ;; Build (embedded Maven)
+      (= (first arguments) "build")
+      (let [args (rest arguments)]
+        (if (or (empty? args) (= (first args) "--help") (= (first args) "-h"))
+          (do (println "Usage: yaac build [dir] <goals...>")
+              (println)
+              (println "  Run Maven goals using embedded Maven (no mvn required).")
+              (println)
+              (println "Examples:")
+              (println "  yaac build clean package")
+              (println "  yaac build clean package -DattachMuleSources")
+              (println "  yaac build test")
+              (println "  yaac build /path/to/app clean package")
+              (println "  yaac build dependency:tree"))
+          (let [dir (maven/find-project-dir (first args))
+                [project-dir goals]
+                (if dir
+                  [dir (if (seq (rest args)) (rest args) ["clean" "package" "-DskipTests"])]
+                  (if-let [cwd (maven/find-project-dir ".")]
+                    [cwd args]
+                    (do (println "No pom.xml found.")
+                        (System/exit 1))))
+]
+            (println (str "Maven " project-dir))
+            (println (str "  " (str/join " " goals)))
+            (println)
+            ;; Use plain output and filter SLF4J binding noise during Maven
+            (let [prev-config timbre/*config*
+                  noise-pats ["SLF4J binding" "not supported by Maven"
+                              "Maven supported bindings" "slf4j-configuration.properties"
+                              "SimpleLoggerFactory" "MavenSimpleLoggerFactory"
+                              "LoggerContext" "Log4jLoggerFactory"]
+                  exit (try
+                         (timbre/merge-config!
+                          {:appenders
+                           {:println
+                            {:fn (fn [data]
+                                   (let [msg (force (:msg_ data))]
+                                     (when-not (some #(str/includes? (str msg) %) noise-pats)
+                                       (println msg))))}}})
+                         (maven/invoke-live! project-dir (vec goals))
+                         (finally
+                           (timbre/set-config! prev-config)))]
+              (System/exit exit)))))
+
       ;; nREPL
       (= (first arguments) "nrepl")
       (try

@@ -1,0 +1,115 @@
+[
+  {
+    "type": "agent-extracted",
+    "classes": [
+      {
+        "nameInfo": "org/apache/maven/wagon/providers/http/HttpWagon$__sisu8",
+        "hash": "UQ8NBxc8Xz6Id4tufMmOUA"
+      },
+      {
+        "nameInfo": "org/apache/maven/artifact/handler/DefaultArtifactHandler$__sisu15",
+        "hash": "vW1YNh3jI22V6V7cQZmagJ"
+      },
+      {
+        "nameInfo": "org/apache/maven/lifecycle/mapping/DefaultLifecycleMapping$__sisu8",
+        "hash": "wNVUlOZbMH2EYlhmzO6jNI"
+      },
+      {
+        "nameInfo": "org/apache/maven/lifecycle/mapping/DefaultLifecycleMapping$__sisu11",
+        "hash": "1J4qCwnbTOCqcdJq34Ufp5"
+      },
+      {
+        "nameInfo": "org/apache/maven/artifact/handler/DefaultArtifactHandler$__sisu20",
+        "hash": "eiTZVmaFH1CyGAF5tm6XX9"
+      },
+      {
+        "nameInfo": "org/apache/maven/lifecycle/mapping/DefaultLifecycleMapping$__sisu9",
+        "hash": "VmLaSELZA4I4Rq9NiDou0B"
+      },
+      {
+        "nameInfo": "org/apache/maven/lifecycle/Lifecycle$__sisu14",
+        "hash": "b6E3cpDnekDWLHvVUTVE8F"
+      },
+      {
+        "nameInfo": "org/apache/maven/artifact/handler/DefaultArtifactHandler$__sisu18",
+        "hash": "KgGjRapuMeJnnOhS05ocP6"
+      },
+      {
+        "nameInfo": "org/apache/maven/artifact/handler/DefaultArtifactHandler$__sisu7",
+        "hash": "BwAXTCuEQl2sZuYDtrnXg4"
+      },
+      {
+        "nameInfo": "org/apache/maven/artifact/handler/DefaultArtifactHandler$__sisu21",
+        "hash": "lkoHfhCXTrLIFTbbdTUH2H"
+      },
+      {
+        "nameInfo": "org/apache/maven/artifact/handler/DefaultArtifactHandler$__sisu2",
+        "hash": "6NVlZIpnFYGXqNgHdIge2L"
+      },
+      {
+        "nameInfo": "org/apache/maven/wagon/providers/http/HttpWagon$__sisu26",
+        "hash": "yT9mmz7IUYGrC84raXwnpL"
+      },
+      {
+        "nameInfo": "org/apache/maven/artifact/handler/DefaultArtifactHandler$__sisu16",
+        "hash": "wJXphtJQDKLpTZ7k1ZOmN9"
+      },
+      {
+        "nameInfo": "org/apache/maven/lifecycle/Lifecycle$__sisu13",
+        "hash": "vVavDdE37m8x9Sj7fWw7L9"
+      },
+      {
+        "nameInfo": "org/apache/maven/artifact/handler/DefaultArtifactHandler$__sisu5",
+        "hash": "RwXP4eqVi3D2M916eMiFNC"
+      },
+      {
+        "nameInfo": "org/apache/maven/lifecycle/mapping/DefaultLifecycleMapping$__sisu10",
+        "hash": "3mXNfQD7zXL3hDlnv6pxtI"
+      },
+      {
+        "nameInfo": "org/mule/tools/maven/mojo/model/lifecycle/mapping/project/MuleLifecycleMapping$__sisu1",
+        "hash": "f0Dh3ehZjaCUW8NMJrYYuH"
+      },
+      {
+        "nameInfo": "org/apache/maven/artifact/handler/DefaultArtifactHandler$__sisu23",
+        "hash": "tdfrJRjEolHKp4LCRAwUUI"
+      },
+      {
+        "nameInfo": "org/apache/maven/artifact/handler/DefaultArtifactHandler$__sisu17",
+        "hash": "mXwsz2RvnNAUdboBoS8sdI"
+      },
+      {
+        "nameInfo": "org/mule/tools/maven/mojo/model/lifecycle/mapping/project/MuleLifecycleMapping$__sisu3",
+        "hash": "XgB4Z9cM4ILRczoYKj1OqE"
+      },
+      {
+        "nameInfo": "org/mule/tools/maven/mojo/model/lifecycle/mapping/project/MuleLifecycleMapping$__sisu6",
+        "hash": "nmMoqqENvBGpqGnnqkj6sD"
+      },
+      {
+        "nameInfo": "org/apache/maven/artifact/handler/DefaultArtifactHandler$__sisu25",
+        "hash": "89xkG9YFJxAv9so5ehbDv1"
+      },
+      {
+        "nameInfo": "org/apache/maven/artifact/handler/DefaultArtifactHandler$__sisu22",
+        "hash": "IPNtSPDBb4KDGSiz0AYmaE"
+      },
+      {
+        "nameInfo": "org/apache/maven/artifact/handler/DefaultArtifactHandler$__sisu4",
+        "hash": "YIVGzEaauCDy8ijpBTC8NJ"
+      },
+      {
+        "nameInfo": "org/apache/maven/artifact/handler/DefaultArtifactHandler$__sisu19",
+        "hash": "vAq7kn7OQuBO9Fp9nyAvW9"
+      },
+      {
+        "nameInfo": "org/apache/maven/lifecycle/mapping/DefaultLifecycleMapping$__sisu12",
+        "hash": "Ml2CuE72CMBVkEZMnoozB2"
+      },
+      {
+        "nameInfo": "org/apache/maven/artifact/handler/DefaultArtifactHandler$__sisu24",
+        "hash": "jqCMQo3grsIvQb0UiL2ZL2"
+      }
+    ]
+  }
+]

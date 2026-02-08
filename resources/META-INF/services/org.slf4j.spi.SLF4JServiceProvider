@@ -1,0 +1,2 @@
+# Empty: Force SLF4J to fall back to StaticLoggerBinder (Timbre bridge)
+# Overrides log4j-slf4j2-impl SLF4JServiceProvider bundled inside munit-remote fat JAR
