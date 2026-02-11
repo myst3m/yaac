@@ -391,7 +391,10 @@
       (-get-organizations))))
 
 (defn get-environments [{:keys [args all] :as opts}]
-  (let [[env org] (reverse args)
+  (let [[org env] (case (count args)
+                    0 [*org* *env*]
+                    1 [(first args) nil]
+                    [(first args) (second args)])
         org (or org *org*)
         env (or env *env*)]
     (if all
