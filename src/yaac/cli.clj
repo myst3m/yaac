@@ -161,22 +161,90 @@
                        ;;yaac.dw/route
                        ]))
 
-(defn print-error [e & {:keys [output-format]}]
-  (log/debug e)
-  (let [{:keys [extra errors] :as exd} (ex-data e)]
-    (let [es (keep identity (or (seq (map :extra errors)) [extra]))] 
-      (if (seq es)
-        (print (yc/default-format-by [:status :message] (or output-format :short) es {}))
-        (print (yc/default-format-by [:status :message] (or output-format :short) [(assoc (or (ex-data e) {}) :message (or (ex-message e) "Unexpected error. Use -d option to investigte."))] {})))
-      (flush))))
+(defn- demangle-clj-name
+  "Clojureのマングル名を読みやすく変換する。
+   yaac.create$create_organization/invokeStatic → yaac.create/create-organization"
+  [^String class-name ^String method-name]
+  (let [clean-method (case method-name
+                       ("invokeStatic" "invoke" "doInvoke" "invokePrim") nil
+                       method-name)
+        parts (str/split class-name #"\$" 2)]
+    (if (= (count parts) 2)
+      ;; Clojure fn: ns$fn_name → ns/fn-name
+      (let [ns-part (str/replace (first parts) "_" "-")
+            fn-part (-> (second parts)
+                        (str/replace #"__\d+$" "")        ;; remove __12345 suffix
+                        (str/replace #"fn$" "fn")
+                        (str/replace "_" "-"))]
+        (str ns-part "/" fn-part))
+      ;; Java class
+      (if clean-method
+        (str class-name "." clean-method)
+        class-name))))
 
-(defn print-explain [e & {:keys [output-format]}]
-  (log/debug e)
-  (print (yc/default-format-by
-          [:status :message]
-          (or output-format :short)
-          {:message (str (ex-message e))}
-          {}))
+(defn- format-cause-chain
+  "cause chainを辿って表示用文字列を返す"
+  [^Throwable e]
+  (loop [cause (.getCause e) acc []]
+    (if (or (nil? cause) (> (count acc) 3))
+      (when (seq acc) (str/join "\n" acc))
+      (recur (.getCause cause)
+             (conj acc (str "  " (jansi/a :faint "caused by: ")
+                            (jansi/fg :yellow
+                                      (str (.getSimpleName (class cause))
+                                           (when-let [m (.getMessage cause)]
+                                             (str " \"" m "\""))))  ))))))
+
+(defn- format-stacktrace [e]
+  (let [frames (->> (.getStackTrace e)
+                    (map (fn [^StackTraceElement f]
+                           {:class (.getClassName f)
+                            :method (.getMethodName f)
+                            :file (or (.getFileName f) "?")
+                            :line (.getLineNumber f)}))
+                    (filter #(or (str/starts-with? (:class %) "yaac.")
+                                 (str/starts-with? (:class %) "clojure.core")))
+                    (take 8))
+        ;; 最初のyaac.*フレームが原因箇所
+        first-yaac-idx (first (keep-indexed
+                                (fn [i f] (when (str/starts-with? (:class f) "yaac.") i))
+                                frames))]
+    (when (seq frames)
+      (str/join "\n"
+                (map-indexed
+                  (fn [i {:keys [class method file line]}]
+                    (let [name (demangle-clj-name class method)
+                          loc (str "(" file ":" line ")")]
+                      (if (= i first-yaac-idx)
+                        ;; 原因フレーム: → マーカー + 白太字
+                        (str (jansi/fg :red "→ ") (jansi/a :bold name)
+                             " " (jansi/fg :cyan loc))
+                        ;; その他: dim
+                        (str "  " (jansi/a :faint name)
+                             " " (jansi/a :faint loc)))))
+                  frames)))))
+
+(defn print-error [e & {:keys [output-format debug]}]
+  (println (str (jansi/fg :red (jansi/a :bold "ERROR")) " "
+                (or (ex-message e) "Unexpected error")))
+  (when debug
+    (when-let [causes (format-cause-chain e)]
+      (println causes))
+    (when-let [trace (format-stacktrace e)]
+      (println trace)))
+  (let [{:keys [extra errors]} (ex-data e)
+        es (keep identity (or (seq (map :extra errors)) [extra]))]
+    (when (seq es)
+      (print (yc/default-format-by [:status :message] (or output-format :short) es {}))))
+  (flush))
+
+(defn print-explain [e & {:keys [output-format debug]}]
+  (println (str (jansi/fg :red (jansi/a :bold "ERROR")) " " (ex-message e)))
+  (when debug
+    (when-let [causes (format-cause-chain e)]
+      (println causes))
+    (when-let [trace (format-stacktrace e)]
+      (println trace)))
   (flush))
 
 
@@ -347,7 +415,7 @@
     (yc/set-global-base-url (:base-url options))
 
     (when (:debug options)
-      (log/set-min-level! :trace)
+      (log/set-min-level! :debug)
       (taoensso.timbre/merge-config!
        {:appenders {:println {:enabled? true  :ns-filter {:allow #{"*"} :deny #{"zeph.client"}}}}}))
 
@@ -409,8 +477,8 @@
                   *deploy-target* (:deploy-target default-context)]
           (log/debug "default:" *org* *env*)
           (apply yaac.nrepl/cli (rest arguments)))
-        (catch clojure.lang.ExceptionInfo e (print-explain e))
-        (catch Exception e (print-error e)))
+        (catch clojure.lang.ExceptionInfo e (print-explain e :debug (:debug options)))
+        (catch Exception e (print-error e :debug (:debug options))))
 
       ;; Platform API
       :else
@@ -443,7 +511,7 @@
                   (flush)
                   (recur ch))))))
         (flush)
-        (catch Exception e (print-error e))))))
+        (catch Exception e (print-error e :debug (:debug options)))))))
 
 (defn -main [& args]
   (apply cli args)

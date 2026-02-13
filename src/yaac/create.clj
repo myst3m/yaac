@@ -159,7 +159,11 @@
                             :as opts}]
   (if-not (and org parent)
     (throw (e/invalid-arguments "Org and its parent org needs to be specified" :args args))
-    (let [parent-org-id (org->id parent)]
+    (let [parent-org-id (org->id parent)
+          ;; v-cores=1.0:1.0:0.0 → CLIパーサーは","でsplitするが":"区切りもサポート
+          vc (if (and (= (count v-cores) 1) (str/includes? (first v-cores) ":"))
+               (str/split (first v-cores) #":")
+               v-cores)]
       (util/spin (str "Creating organization " org "..."))
       (->> @(http/post (gen-url "/accounts/api/organizations")
                        {:headers (default-headers)
@@ -169,9 +173,9 @@
                                           :entitlements {:createEnvironments true
                                                          :createSubOrgs true
                                                          :globalDeployment true
-                                                         :vCoresProduction {:assigned (or (parse-double (first v-cores)) 0.1)}
-                                                         :vCoresSandbox {:assigned (or (parse-double (second v-cores)) 0.1)}
-                                                         :vCoresDesign {:assigned (if (< (count v-cores) 3) 0.0 (parse-double (last v-cores)))}}})})
+                                                         :vCoresProduction {:assigned (or (some-> (first vc) parse-double) 0.1)}
+                                                         :vCoresSandbox {:assigned (or (some-> (second vc) parse-double) 0.1)}
+                                                         :vCoresDesign {:assigned (if (< (count vc) 3) 0.0 (parse-double (last vc)))}}})})
            (parse-response)))))
 
 (defn create-environment [{:keys [production type args]

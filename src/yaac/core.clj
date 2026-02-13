@@ -426,7 +426,9 @@
         (map (juxt :id :name))
         (filter #((set %) id-or-name) )
         (ffirst ))
-      id-or-name))
+      ;; UUID形式ならIDとしてそのまま返す、それ以外はnil（org->idでthrowさせる）
+      (when (re-matches #"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}" (str id-or-name))
+        id-or-name)))
 
 (defn org->id [id-or-name]
   (or (org->id* id-or-name)
@@ -575,10 +577,10 @@
                  (or title (name (last ukey)))])))))
 
 (defn default-format-by [fields output-type data {:keys [no-header] :as opts}]
-  (log/debug "fields:" fields)
-  (log/debug "output-type:" output-type)
-  (log/debug "first data:" (first data))
-  (log/debug "options:" (dissoc opts :summary))
+  (log/trace "fields:" fields)
+  (log/trace "output-type:" output-type)
+  (log/trace "first data:" (first data))
+  (log/trace "options:" (dissoc opts :summary))
 
   (cond
     (sequential? data)
@@ -587,8 +589,8 @@
           ;; ukeys are uniformed key  [[:id] [:name] [:status :application] [:status] [:last-modified-date] [:target-id :target]]
           ukeys (map (comp vec first) count-alist)]
 
-      (log/debug "Keys:" ukeys)
-      (log/debug "Counts: " count-alist)
+      (log/trace "Keys:" ukeys)
+      (log/trace "Counts: " count-alist)
 
       (case output-type
         :json (yutil/json-pprint (mapv #(dissoc % :extra) data))
@@ -599,7 +601,7 @@
           ;; count-alist [[:id] [{...}] :title-id]
           ;; title-map: {(:id) id, (:name) name, (:entitlements :v-cores-production :assigned) production, (:entitlements :v-cores-sandbox :assigned) assigned, (:entitlements :static-ips :assigned) assigned, (:entitlements :network-connections :assigned) assigned, (:entitlements :vpns :assigned) assigned}
           
-          (log/debug count-map)
+          (log/trace count-map)
           (letfn [(column-max-width [k]
                     (apply max (keep identity (cons (or (count (name (get title-map k "")))
                                                         (-> k last name count))
@@ -630,7 +632,7 @@
     (default-format-by fields output-type [data] opts)
 
     :default
-    (do (log/debug "default-format-by" data)
+    (do (log/trace "default-format-by" data)
         data)))
 
 (defn format-org-all
