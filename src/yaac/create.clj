@@ -824,13 +824,15 @@
      ["|" {:help true}
       ["org"]
       ["organization"]]
-     ["|" {:handler create-organization}
+     ["|" {:handler create-organization
+            :fields [[:body :name] [:body :id]]}
       ["org|{*args}" ]
       ["organization|{*args}" ]]
      ["|" {:help true}
       ["env"]
       ["environement"]]
-     ["|" {:handler create-environment}
+     ["|" {:handler create-environment
+            :fields [[:body :name] [:body :id] [:body :type]]}
       ["env|{*args}" ]
       ["environement|{*args}" ]]
      ["|" {:handler create-private-space
