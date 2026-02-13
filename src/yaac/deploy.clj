@@ -466,6 +466,9 @@
                                                (str/starts-with? given-target-name "ch2:")
                                                [(subs given-target-name 4) #(contains? #{"cloudhub2" "shared-space" "private-space"} (:type %))]
 
+                                               (str/starts-with? given-target-name "ch20:")
+                                               [(subs given-target-name 5) #(contains? #{"cloudhub2" "shared-space" "private-space"} (:type %))]
+
                                                :else
                                                [given-target-name (constantly true)])
           [org env app] (case (count args)
@@ -473,6 +476,8 @@
                           0 [*org* *env* ""]
                           ;; deploy app my-app target=rtf:k1
                           1 [*org* *env* (first args)]
+                          ;; deploy app T1 my-app target=hy:leibniz
+                          2 [(first args) *env* (second args)]
                           ;;  deploy app T1 Production my-app target=ch2:ap-northeast-1
                           3 [(first args) (second args) (last args)]
                           (throw (e/invalid-arguments "Org and Env should be specified or use default context with yaac config command" {:args args :target target})))
@@ -483,11 +488,15 @@
                                                                    (str/lower-case actual-target-name)))
                                                        (map (juxt :name (comp keyword str/lower-case :type))))
 
-          n-args [target-name org env app]]
+          n-args [target-name org env app]
+          resolved-opts (cond-> opts
+                          (not (:group opts))                 (assoc :group org)
+                          (and (seq app) (not (:asset opts))) (assoc :asset app))]
 
       (log/debug "targets:" targets)
       (log/debug "n-args:" n-args)
       (log/debug "target-type:" target-type)
+      (log/debug "resolved-opts:" resolved-opts)
 
       (when-not target-name
         (throw (e/runtime-target-not-found "No specified target name." {:target-name given-target-name})))
@@ -498,9 +507,9 @@
         :else (do
                 (util/spin (str "Deploying " (or app "app") " to " target-name "..."))
                 (cond
-                  (#{:runtime-fabric} target-type) (-deploy-rtf-application (assoc opts :args n-args)) ;; remove runtime-target
-                  (#{:cloudhub2 :ps :private-space :shared-space} target-type) (-deploy-cloudhub20-application (assoc opts :args n-args))
-                  (#{:hybrid :server} target-type) (-deploy-hybrid-application (assoc opts :args n-args))
+                  (#{:runtime-fabric} target-type) (-deploy-rtf-application (assoc resolved-opts :args n-args))
+                  (#{:cloudhub2 :ps :private-space :shared-space} target-type) (-deploy-cloudhub20-application (assoc resolved-opts :args n-args))
+                  (#{:hybrid :server} target-type) (-deploy-hybrid-application (assoc resolved-opts :args n-args))
                   :else (throw (e/runtime-target-not-found "No specified target type." {:target-type target-type :target-name target-name}))))))))
 
 ;; This is for RTF/CH2
