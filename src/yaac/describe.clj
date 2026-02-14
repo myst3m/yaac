@@ -229,6 +229,7 @@
      ["|app|{*args}" {:fields [:id :name
                                [:extra :status]
                                [:application :status :as "pod"]
+                               [:application :ref :version :as "version"]
                                [:application :v-cores]
                                [:target :replicas]
                                [:target :deployment-settings :http :inbound :public-url]

@@ -713,7 +713,7 @@
           :body
           :items
           (add-extra-fields :org org :env env
-                            :status #(get-in % [:application :status])
+                            :status #(:status %)
                             :target #(target->name org-id env-id (get-in % [:target :target-id])))))))
 
 
