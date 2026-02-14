@@ -217,6 +217,7 @@
                                                  :name target-app-name
                                                  :id (get payload :id)
                                                  :status (get-in payload [:application :status])
+                                                 :deployment-status (get payload :status)
                                                  :target (yc/target->name org env target-id))
                             (throw (e/invalid-arguments))))))
                 (throw (e/invalid-arguments "Invalid arguments" {:args args}))))]
@@ -331,6 +332,7 @@
                                                  :name target-app-name
                                                  :id (get payload :id)
                                                  :status (get-in payload [:application :status])
+                                                 :deployment-status (get payload :status)
                                                  :target (yc/target->name org env target-id))
                             (throw (e/invalid-arguments))))))
                 (catch Exception e
