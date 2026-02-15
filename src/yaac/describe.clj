@@ -17,7 +17,7 @@
             [zeph.client :as http]
             [reitit.core :as r]
             [yaac.core :refer [*org* *env* *deploy-target* parse-response default-headers
-                               add-extra-fields
+                               add-extra-fields short-uuid
                                org->id env->id app->id target->id
                                org->name env->name load-session! -get-deployed-applications
                                -get-client-provider
@@ -226,7 +226,7 @@
      
      ["|app" {:help true}]
      ["|application" {:help true}]
-     ["|app|{*args}" {:fields [:id :name
+     ["|app|{*args}" {:fields [[:id :fmt short-uuid] :name
                                [:extra :status]
                                [:application :status :as "pod"]
                                [:application :ref :version :as "version"]

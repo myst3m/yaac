@@ -15,7 +15,7 @@
             [taoensso.timbre :as log]
             [zeph.client :as http]
             [reitit.core :as r]
-            [yaac.core :refer [*org* *env* parse-response default-headers org->id env->id api->id org->name ps->id conn->id load-session! gen-url assign-connected-app-scopes connected-app->id -get-root-organization -get-client-provider client-provider->id -get-api-upstreams -patch-api-upstream -get-api-policy -patch-api-policy policy-name->id] :as yc]
+            [yaac.core :refer [*org* *env* parse-response default-headers short-uuid org->id env->id api->id org->name ps->id conn->id load-session! gen-url assign-connected-app-scopes connected-app->id -get-root-organization -get-client-provider client-provider->id -get-api-upstreams -patch-api-upstream -get-api-policy -patch-api-policy policy-name->id] :as yc]
             [yaac.error :as e]
             [clojure.string :as str]
             [clojure.tools.cli :refer [parse-opts]]
@@ -457,7 +457,7 @@
      ["" {:help true}]
      ["|-h" {:help true}]
    ["|app" {:help true}]
-   ["|app|{*args}" {:fields [[:extra :id]
+   ["|app|{*args}" {:fields [[:extra :id :fmt short-uuid]
                              [:extra :name]
                              ;;[:application :v-cores]
                              ;;[:target :replicas]
@@ -468,11 +468,11 @@
    ["|asset|{*args}" {:fields [:status]
                       :handler update-asset-config}]
    ["|api" {:help true}]
-   ["|api|{*args}" {:fields [:id :asset-version :technology [:endpoint :deployment-type] [:endpoint :uri] [:endpoint :proxy-uri]]
+   ["|api|{*args}" {:fields [[:id :fmt short-uuid] :asset-version :technology [:endpoint :deployment-type] [:endpoint :uri] [:endpoint :proxy-uri]]
                     :handler update-api-config}]
    ["|org" {:help true}]
    ["|org|{*args}" {:handler update-organization-config
-                    :fields [:id :name
+                    :fields [[:id :fmt short-uuid] :name
                              [:entitlements :v-cores-production :assigned]
                              [:entitlements :v-cores-sandbox :assigned]
                              [:entitlements :static-ips :assigned]
@@ -487,10 +487,10 @@
                               :handler update-connected-app}]
    ;; Client Providers
    ["|cp" {:help true}]
-   ["|cp|{*args}" {:fields [[:extra :name] [:extra :id] [:extra :type]]
+   ["|cp|{*args}" {:fields [[:extra :name] [:extra :id :fmt short-uuid] [:extra :type]]
                    :handler update-client-provider}]
    ["|client-provider" {:help true}]
-   ["|client-provider|{*args}" {:fields [[:extra :name] [:extra :id] [:extra :type]]
+   ["|client-provider|{*args}" {:fields [[:extra :name] [:extra :id :fmt short-uuid] [:extra :type]]
                                  :handler update-client-provider}]
    ;; API Upstream
    ["|upstream" {:help true}]

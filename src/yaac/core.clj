@@ -412,6 +412,10 @@
 ;; Org/Env name does not require to throw exception since it is not used for query.
 ;;
 
+(defn prefix-match? [input actual]
+  (and actual input
+       (str/starts-with? (str actual) (str input))))
+
 (defn org->name [id-or-name]
   (let [xs (-get-organizations)]
     (last (first (filter #((set %) id-or-name) (map (juxt :id :name) xs))))))
@@ -422,13 +426,16 @@
 
 ;; No throw exception for get functions so as to query OOB assets
 (defn org->id* [id-or-name]
-  (or (->> (-get-organizations)
-        (map (juxt :id :name))
-        (filter #((set %) id-or-name) )
-        (ffirst ))
-      ;; UUID形式ならIDとしてそのまま返す、それ以外はnil（org->idでthrowさせる）
-      (when (re-matches #"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}" (str id-or-name))
-        id-or-name)))
+  (let [orgs (-get-organizations)
+        pairs (map (juxt :id :name) orgs)]
+    (or (ffirst (filter #((set %) id-or-name) pairs))
+        ;; prefix match fallback
+        (let [matches (filter #(prefix-match? id-or-name (first %)) pairs)]
+          (when (= 1 (count matches))
+            (ffirst matches)))
+        ;; UUID形式ならIDとしてそのまま返す、それ以外はnil（org->idでthrowさせる）
+        (when (re-matches #"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}" (str id-or-name))
+          id-or-name))))
 
 (defn org->id [id-or-name]
   (or (org->id* id-or-name)
@@ -438,7 +445,11 @@
 
 (defn env->id [org-id-or-name id-or-name]
   (let [xs (-get-environments (org->name org-id-or-name))
-        env-id (ffirst (filter #((set %) id-or-name) (map (juxt :id :name) xs)))]
+        pairs (map (juxt :id :name) xs)
+        env-id (or (ffirst (filter #((set %) id-or-name) pairs))
+                   (let [matches (filter #(prefix-match? id-or-name (first %)) pairs)]
+                     (when (= 1 (count matches))
+                       (ffirst matches))))]
     (or env-id (throw (e/env-not-found "Not found environement" :org org-id-or-name :env id-or-name)))))
 
 (defmulti map->graphql (fn [{:keys [asset-id group-id]}]
@@ -562,18 +573,23 @@
     ;; Assume all 2 byte visually
     {:data s :count (count s) :ascii (count asciis) :others-byte-length others-byte-length :others others-count :visual-width (+ (* 2 others-count) (count asciis))}))
 
+(defn short-uuid [s]
+  (if-let [[_ prefix] (re-matches #"([0-9a-f]{8})-[0-9a-f]{4}-.*" (str s))]
+    prefix
+    (str s)))
 
 (defn count-visual-widths-list [key-fields data]
   (->> key-fields
        (map (fn [k]
               (let [ks (flatten [k])
-                    ukey (take-while #(not= :as %) ks)
+                    ukey (take-while #(and (not= :as %) (not= :fmt %)) ks)
+                    fmt-fn (second (drop-while #(not= :fmt %) ks))
                     [title] (reverse (drop-while #(not= :as %) ks))]
-                
+
                 [ukey
                  (->> data
                       (map (apply comp (reverse ukey))) ;; see below to know why is reverse being used .
-                      (map (comp count-visual-width str)))
+                      (map (comp count-visual-width str (or fmt-fn identity))))
                  (or title (name (last ukey)))])))))
 
 (defn default-format-by [fields output-type data {:keys [no-header] :as opts}]
@@ -648,11 +664,11 @@
           (= output-format :yaml) (yaml/generate-string all-data)
           ;; Default: separate tables for each category
           :else
-          (let [sections [{:key :environments :fields [[:name] [:id] [:type]] :title "Environments"}
+          (let [sections [{:key :environments :fields [[:name] [:id :fmt short-uuid] [:type]] :title "Environments"}
                           {:key :apps :fields [[[:extra :env]] [:name] [:status] [[:application :status] :as "app-status"]] :title "Apps"}
                           {:key :assets :fields [[:asset-id] [:type] [:version]] :title "Assets"}
                           {:key :apis :fields [[[:extra :env]] [:asset-id] [:asset-version]] :title "APIs"}
-                          {:key :gateways :fields [[[:extra :env]] [:name] [:id]] :title "Gateways"}
+                          {:key :gateways :fields [[[:extra :env]] [:name] [:id :fmt short-uuid]] :title "Gateways"}
                           {:key :connected-apps :fields [[:client-name] [:client-id]] :title "Connected Apps"}
                           {:key :users :fields [[:first-name] [:last-name] [:email]] :title "Users" :filter-fn #(seq (:email %))}]]
             (->> sections
@@ -716,6 +732,51 @@
                             :status #(:status %)
                             :target #(target->name org-id env-id (get-in % [:target :target-id])))))))
 
+(defn -enrich-application
+  "Enrich a list-level app with detail API data for -o wide display"
+  [org env appi]
+  (let [app-type (csk/->kebab-case-keyword
+                  (or (-> appi :target :type)
+                      (-> appi :target :provider)
+                      :none))]
+    (try
+      (case app-type
+        :mc
+        (let [org-id (org->id org)
+              env-id (env->id org env)
+              app-id (:id appi)]
+          (-> @(http/get (format (gen-url "/amc/application-manager/api/v2/organizations/%s/environments/%s/deployments/%s") org-id env-id app-id)
+                        {:headers (default-headers)})
+              (parse-response)
+              :body
+              (as-> result
+                  (first (add-extra-fields result
+                                           :org org :env env
+                                           :status (:status result)
+                                           :target (target->name org-id env-id (get-in result [:target :target-id])))))))
+
+        :server
+        (let [org-id (org->id org)
+              env-id (env->id org env)
+              app-id (:id appi)]
+          (-> @(http/get (format (gen-url "/hybrid/api/v1/applications/%s") app-id)
+                        {:headers (assoc (default-headers)
+                                         "X-ANYPNT-ORG-ID" org-id
+                                         "X-ANYPNT-ENV-ID" env-id)})
+              (parse-response)
+              :body
+              :data
+              (as-> result
+                  (first (add-extra-fields result
+                                           :org org :env env
+                                           :status (when (:started result) "STARTED")
+                                           :target (get-in result [:target :name]))))))
+
+        ;; default: return as-is
+        appi)
+      (catch Exception e
+        (log/debug "enrich failed for" (:name appi) (ex-message e))
+        appi))))
 
 ;; --- Flex Gateway APIs ---
 ;; Standalone: /standalone/api/v1/.../gateways (self-managed)
@@ -781,6 +842,9 @@
   (let [gws (-get-gateways org env)]
     (or (->> gws (filter #(= (:name %) gw-name)) first :id)
         (->> gws (filter #(= (:id %) gw-name)) first :id)
+        (let [matches (->> gws (filter #(prefix-match? gw-name (str (:id %)))))]
+          (when (= 1 (count matches))
+            (:id (first matches))))
         (throw (e/no-item (str "Gateway not found: " gw-name)
                           {:gateways (map :name gws)})))))
 
@@ -804,10 +868,13 @@
   (-get-runtime-fabrics org))
 
 (defn rtf->id [org cluster]
-  (let [[r] (->> (-get-runtime-fabrics org)
-                 (filter #(or (= cluster (:name %))
-                              (= cluster (:id %)))))]
-    (:id r)))
+  (let [rtfs (-get-runtime-fabrics org)
+        [r] (->> rtfs (filter #(or (= cluster (:name %))
+                                   (= cluster (:id %)))))]
+    (or (:id r)
+        (let [matches (->> rtfs (filter #(prefix-match? cluster (str (:id %)))))]
+          (when (= 1 (count matches))
+            (:id (first matches)))))))
 
 
 
@@ -932,20 +999,28 @@
 (defn api->id [org env api]
   (let [apis (-get-api-instances org env api)]
     (cond
-      (= 0  (count apis))
-      (throw (e/api-not-found "No api found" {:api api}))
+      (= 1 (count apis))
+      (:id (first apis))
       (< 1 (count apis))
       (throw (e/multiple-api-name-found "Found multiple API instances" {:apis (mapv :id apis)}))
       :else
-      (:id (first apis)))))
+      ;; prefix match fallback on all APIs in the env
+      (let [all-apis (-get-api-instances org env)
+            matches (filter #(prefix-match? api (str (:id %))) all-apis)]
+        (cond
+          (= 1 (count matches)) (:id (first matches))
+          (< 1 (count matches)) (throw (e/multiple-api-name-found "Multiple APIs match prefix" {:apis (mapv :id matches)}))
+          :else (throw (e/api-not-found "No api found" {:api api})))))))
 
 
 (defn target->id [org env target]
-  (->> (pmap (fn [f] (f)) [#(-get-runtime-cloud-targets org) #(-get-servers org env)])
-       (apply concat)
-       (filter #(or (= target (:name %)) (= target (str (:id %)))))
-       (first)
-       :id))
+  (let [all (->> (pmap (fn [f] (f)) [#(-get-runtime-cloud-targets org) #(-get-servers org env)])
+                 (apply concat))
+        exact (->> all (filter #(or (= target (:name %)) (= target (str (:id %))))) first)]
+    (or (:id exact)
+        (let [matches (->> all (filter #(prefix-match? target (str (:id %)))))]
+          (when (= 1 (count matches))
+            (:id (first matches)))))))
 
 (defn target->name [org env target]
   (->> (pmap (fn [f] (f)) [#(-get-runtime-cloud-targets org) #(-get-servers org env)])
@@ -1358,14 +1433,19 @@
 ;; (def -get-deployed-applications (memoize -get-deployed-applications))
 
 (defn name->apps [org env app]
-  (->> (-get-deployed-applications org env)
-       (filter #(or (= (:name %) app) (= (:id %) app)))))
+  (let [exact (->> (-get-deployed-applications org env)
+                   (filter #(or (= (:name %) app) (= (:id %) app))))]
+    (if (seq exact)
+      exact
+      (->> (-get-deployed-applications org env)
+           (filter #(prefix-match? app (str (:id %))))))))
 
 
-(defn get-deployed-applications [{:keys [args no-multi-thread search-term]
+(defn get-deployed-applications [{:keys [args no-multi-thread search-term output-format]
                                   :as opts}]
   (log/debug "Opts:" opts)
   (let [{:keys [all]} opts
+        wide? (= :wide (keyword (or output-format "")))
         ;; 引数が1つの場合は検索語として扱い、org/envはデフォルトを使う
         [org env search] (case (count args)
                            0 [*org* *env* nil]
@@ -1374,23 +1454,25 @@
                            [(first args) (second args) (nth args 2 nil)])
         search-term (or search-term search)]
     (if all
-      (->> (-get-organizations)
-           (mapcat (fn [{g :name}]
-                     (try
-                       (->> (-get-environments g)
-                           (mapv (fn [{e :name}] [g e])))
-                       (catch Exception e (log/debug (ex-cause e))))))
-           (pmap (fn [[g e]] (try
-                               (-get-deployed-applications g e)
-                               (catch Exception e (log/debug (ex-cause e))))))
-           (apply concat)
-           (filter #(re-find (re-pattern (or search-term ".")) (:name %))))
+      (cond->> (->> (-get-organizations)
+                    (mapcat (fn [{g :name}]
+                              (try
+                                (->> (-get-environments g)
+                                    (mapv (fn [{e :name}] [g e])))
+                                (catch Exception e (log/debug (ex-cause e))))))
+                    (pmap (fn [[g e]] (try
+                                        (-get-deployed-applications g e)
+                                        (catch Exception e (log/debug (ex-cause e))))))
+                    (apply concat)
+                    (filter #(re-find (re-pattern (or search-term ".")) (:name %))))
+        wide? (pmap #(-enrich-application (get-in % [:extra :org]) (get-in % [:extra :env]) %)))
       (if-not (and org env)
         (throw (e/invalid-arguments "Org and Env need to be specified" {:args args
                                                                         :availables {:org (map :name (-get-organizations))
                                                                                     :env (map :name (-get-environments org))}}))
-        (->> (-get-deployed-applications org env)
-             (filter #(re-find (re-pattern (or (str/join search-term) ".")) (:name %))))))))
+        (cond->> (->> (-get-deployed-applications org env)
+                      (filter #(re-find (re-pattern (or (str/join search-term) ".")) (:name %))))
+          wide? (pmap #(-enrich-application org env %)))))))
 
 
 (defn -get-api-contracts [org env api]
@@ -1467,18 +1549,22 @@
    (log/debug "app->id: " runtime-target-id org-id-or-name env-id-or-name id-or-name)
    (if-let [xs (-get-deployed-applications (org->id org-id-or-name) (env->id org-id-or-name env-id-or-name))]
      (let [runtime-target-id (or runtime-target-id :any)
+           target-filter (fn [item]
+                           (or (= :any runtime-target-id)
+                               (= (-> item :target :id) runtime-target-id)
+                               (= (-> item :target :target-id) runtime-target-id)
+                               (= (-> item :target :name) runtime-target-id)))
            apps (->> xs
-                     (filter #(and 
-                               (or (= :any runtime-target-id)
-                                   ;; Hybrid
-                                   (= (-> % :target :id) runtime-target-id)
-                                   ;; CH2
-                                   (= (-> % :target :target-id) runtime-target-id)
-                                   (= (-> % :target :name) runtime-target-id))
-                               (or (= (str (:id %)) id-or-name)
-                                   (= (:name %) id-or-name)))))]
+                     (filter #(and (target-filter %)
+                                   (or (= (str (:id %)) id-or-name)
+                                       (= (:name %) id-or-name)))))
+           apps (if (seq apps) apps
+                    ;; prefix match fallback
+                    (->> xs
+                         (filter #(and (target-filter %)
+                                       (prefix-match? id-or-name (str (:id %)))))))]
        (cond
-         (= 0 (count apps))  (throw (e/app-not-found "No app found" {:app id-or-name :available (map :id apps)}))
+         (= 0 (count apps))  (throw (e/app-not-found "No app found" {:app id-or-name :available (map :id xs)}))
          (< 1 (count apps)) (throw (e/multiple-app-name-found "Multiple app name found. Specific id instead of app name" {:name id-or-name} ))
          :else (-> apps first :id)))
      (throw (e/app-not-found "No app found" {:org org-id-or-name :env env-id-or-name :app id-or-name})))))
@@ -1560,9 +1646,11 @@
 
 
 (defn ps->id [org ps]
-  (let [xs (->> (-get-cloudhub20-privatespaces org)
-                (filter #(or (= ps (:id %))
-                             (= ps (:name %)))))]
+  (let [all (-get-cloudhub20-privatespaces org)
+        xs (->> all (filter #(or (= ps (:id %))
+                                  (= ps (:name %)))))
+        xs (if (seq xs) xs
+               (->> all (filter #(prefix-match? ps (str (:id %))))))]
     (cond
       (= 1 (count xs)) (:id (first xs))
       (< 1 (count xs)) (throw (e/multiple-private-sppace-found "Multiple private spaces found" {:name ps} )))))
@@ -1618,9 +1706,10 @@
     (-get-cloudhub20-connections org ps)))
 
 (defn conn->id [org ps conn]
-  (let [xs (->> (-get-cloudhub20-connections org ps)
-                (filter #(or (= (:name %) conn) (= (:id %) conn))))]
-
+  (let [all (-get-cloudhub20-connections org ps)
+        xs (->> all (filter #(or (= (:name %) conn) (= (:id %) conn))))
+        xs (if (seq xs) xs
+               (->> all (filter #(prefix-match? conn (str (:id %))))))]
     (cond
       (= 1 (count xs)) (or (:connection-id (first xs)) (:id (first xs)))
       (< 1 (count xs)) (throw (e/multiple-connections "Multiple connection found")))))
@@ -2037,7 +2126,7 @@
 (def ^:private route-body
   [["" {:help true}]
    ["|-h" {:help true}]
-   ["|" {:fields [:name :id :parent-name]
+   ["|" {:fields [:name [:id :fmt short-uuid] :parent-name]
          :formatter format-org-all
          :handler get-organizations}
     ;; Get orgs
@@ -2049,7 +2138,7 @@
    
    
    ;; Get envs
-   ["|" {:fields [:name :id :type]
+   ["|" {:fields [:name [:id :fmt short-uuid] :type]
          :handler get-environments}
     ["env"]
     ["env|{*args}"]
@@ -2064,7 +2153,7 @@
    
    
    ;; Get proxy
-   ["|" {:fields [:organization-id :environment-id :id :application-name :type :target-type :target-name ]
+   ["|" {:fields [:organization-id :environment-id [:id :fmt short-uuid] :application-name :type :target-type :target-name ]
          :handler get-api-proxies}
     ["proxy"]
     ["proxy|{*args}"]]
@@ -2073,10 +2162,21 @@
    ["|" {:fields [[:extra :org]
                   [:extra :env]
                   :name
-                  :id
+                  [:id :fmt short-uuid]
                   [:extra :status]
                   [:application :status :as "applied"]
                   [:extra :target]]
+
+         :wide-fields [[:extra :org]
+                       [:extra :env]
+                       :name
+                       [:id :fmt short-uuid]
+                       [:extra :status]
+                       [:application :status :as "applied"]
+                       [:application :ref :version :as "version"]
+                       [:application :v-cores]
+                       [:target :replicas]
+                       [:extra :target]]
 
          :handler get-deployed-applications}
     ["app"]
@@ -2086,7 +2186,7 @@
 
 
    ;; Get runtime fabrics
-   ["|" {:fields [:name :id :status :desired-version :vendor :region]
+   ["|" {:fields [:name [:id :fmt short-uuid] :status :desired-version :vendor :region]
          :handler get-runtime-fabrics}
     ["rtf"]
     ["rtf|{*args}"]
@@ -2094,7 +2194,7 @@
     ["runtime-fabric|{*args}"]]
 
    ;; Get runtime targets
-   ["|" {:fields [:name :type :id :region :status]
+   ["|" {:fields [:name :type [:id :fmt short-uuid] :region :status]
          :handler get-runtime-targets}
     ["rtt"]
     ["rtt|{*args}"]
@@ -2103,7 +2203,7 @@
 
 
    ;; Get servers
-   ["|" {:fields [:name :id :mule-version :agent-version :status
+   ["|" {:fields [:name [:id :fmt short-uuid] :mule-version :agent-version :status
                   [:runtime-information :jvm-information :runtime :name]
                   [:runtime-information :jvm-information :runtime :version]
                   [:runtime-information :os-information :name]
@@ -2116,7 +2216,7 @@
     ["server|{*args}"]]
    
    ;; Get private spaces
-   ["|" {:fields [:id :name :status :region]
+   ["|" {:fields [[:id :fmt short-uuid] :name :status :region]
          :handler get-cloudhub20-privatespaces}
     ["ps" ]
     ["ps|{*args}"]
@@ -2124,7 +2224,7 @@
     ["private-space|{*args}"]]
 
    ;; Get secret groups
-   ["|" {:fields [[:meta :id] :name [:meta :locked] :_org :_env]
+   ["|" {:fields [[:meta :id :fmt short-uuid] :name [:meta :locked] :_org :_env]
          :handler get-secret-groups}
     ["sg"]
     ["sg|{*args}"]
@@ -2132,7 +2232,7 @@
     ["secret-group|{*args}"]]
 
    ;; Get apis
-   ["|" {:fields [:id :asset-id :exchange-asset-name :status :technology 
+   ["|" {:fields [[:id :fmt short-uuid] :asset-id :exchange-asset-name :status :technology
                   :product-version :asset-version]
          :handler get-api-instances}
     ["api"]
@@ -2141,7 +2241,7 @@
     ["api-instance|{*args}"]]
 
    ;; All Flex Gateways (standalone + managed)
-   ["|" {:fields [:id [:extra :org] [:extra :env] :name :status :source]
+   ["|" {:fields [[:id :fmt short-uuid] [:extra :org] [:extra :env] :name :status :source]
          :handler get-gateways}
     ["gw"]
     ["gw|{*args}"]
@@ -2172,7 +2272,7 @@
     ["np|{*args}"]]
 
    ;; Contracts
-   ["|" {:fields [[:application :name] :id :status :api-id [:extra :api-name]]
+   ["|" {:fields [[:application :name] [:id :fmt short-uuid] :status [:api-id :fmt short-uuid] [:extra :api-name]]
          :handler get-api-contracts}
     ["contract"]
     ["contract|{*args}"]
@@ -2197,7 +2297,7 @@
     ["scopes"]
     ["scopes|{*args}"]]
 
-   ["|" {:fields [:username :id :email [:extra :idp]]
+   ["|" {:fields [:username [:id :fmt short-uuid] :email [:extra :idp]]
          :handler get-users}
     ["user"]
     ["user|{*args}"]]
@@ -2221,13 +2321,13 @@
 
    ;; IDP
    ["|" {:handler get-identity-providers
-         :fields [ :name [:extra :id] [:extra :org] [:extra :type]]}
+         :fields [ :name [:extra :id :fmt short-uuid] [:extra :org] [:extra :type]]}
     ["idp"]
     ["idp|{*args}"]]
 
    ;; Client Providers (OpenID Connect client management)
    ["|" {:handler get-client-providers
-         :fields [:name [:extra :id] [:extra :org] [:extra :type]]}
+         :fields [:name [:extra :id :fmt short-uuid] [:extra :org] [:extra :type]]}
     ["cp"]
     ["cp|{*args}"]
     ["client-provider"]

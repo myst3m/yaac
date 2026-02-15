@@ -16,7 +16,7 @@
             [zeph.client :as http]
             [reitit.core :as r]
             [yaac.core :refer [*org* *env* *deploy-target*
-                               parse-response default-headers
+                               parse-response default-headers short-uuid
                                org->id ps->id rtf->id env->id api->id app->id org->name env->name gw->id load-session!
                                gen-url assign-connected-app-scopes -get-root-organization -get-api-upstreams] :as yc]
             [yaac.deploy :as deploy]
@@ -825,27 +825,27 @@
       ["org"]
       ["organization"]]
      ["|" {:handler create-organization
-            :fields [[:body :name] [:body :id]]}
+            :fields [[:body :name] [:body :id :fmt short-uuid]]}
       ["org|{*args}" ]
       ["organization|{*args}" ]]
      ["|" {:help true}
       ["env"]
       ["environement"]]
      ["|" {:handler create-environment
-            :fields [[:body :name] [:body :id] [:body :type]]}
+            :fields [[:body :name] [:body :id :fmt short-uuid] [:body :type]]}
       ["env|{*args}" ]
       ["environement|{*args}" ]]
      ["|" {:handler create-private-space
-           :fields [:id [:extra :name] [:extra :status]]}
+           :fields [[:id :fmt short-uuid] [:extra :name] [:extra :status]]}
       ["ps|{*args}"]
       ["private-space|{*args}"]]
      ["|"
-      ["api|{*args}" {:fields [:id :asset-id :asset-version]
+      ["api|{*args}" {:fields [[:id :fmt short-uuid] :asset-id :asset-version]
                       :handler create-api-instance}]]
      ["|"
       ["policy|{*args}" {:handler create-api-policy}]]
      ["|" {:handler create-managed-gateway
-           :fields [:id :name :status]}
+           :fields [[:id :fmt short-uuid] :name :status]}
       ["gateway|{*args}"]
       ["gw|{*args}"]]
      ["|" {:handler invite-user
@@ -856,7 +856,7 @@
            :fields [:client-id :client-secret :client-name]}
       ["connected-app|{*args}"]]
      ["|" {:handler create-client-provider
-           :fields [[:extra :name] [:extra :id] [:extra :type]]}
+           :fields [[:extra :name] [:extra :id :fmt short-uuid] [:extra :type]]}
       ["cp|{*args}"]
       ["client-provider|{*args}"]]
      ["|" {:handler create-alert
