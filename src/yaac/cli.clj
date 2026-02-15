@@ -297,11 +297,18 @@
                         ;; Error:  #error{:data {:extra [{:org T1, :env Sandbox, :name hello, :target t1ps, :status 400, :message Configuring the instance type is not compatible with your pricing model}], :state 9000}}
                         sample (first results)
 
-                        default-fields (or (:fields data) (map #(vector :extra %) (keys (or (:extra sample)
-                                                                                            (:extra (ex-data sample))
-                                                                                            (:extra (first (:errors (ex-data sample)))) ;; For error object returned by multi-threaded
-                                                                                            {}))) [])
-                        ;; 
+                        effective-format (or (some-> (:output-format cooked-params) csk/->kebab-case-keyword)
+                                             (some-> (:output-format data) csk/->kebab-case-keyword))
+
+                        default-fields (or (if (= :wide effective-format) (:wide-fields data) nil)
+                                           (:fields data)
+                                           (map #(vector :extra %) (keys (or (:extra sample)
+                                                                             (:extra (ex-data sample))
+                                                                             (:extra (first (:errors (ex-data sample)))) ;; For error object returned by multi-threaded
+                                                                             {}))) [])
+                        ;; wide -> short for table rendering
+                        render-format (if (= :wide effective-format) :short effective-format)
+                        ;;
                         specific-formatter (or (:formatter data) [])]
 
 
@@ -311,8 +318,7 @@
 
                     ;; If no Fields is specified, JSON format is used to output
                     (cond->> (if (fn? specific-formatter)
-                               (do (specific-formatter (or (some-> (:output-format cooked-params) csk/->kebab-case-keyword)
-                                                           (some-> (:output-format data) csk/->kebab-case-keyword))
+                               (do (specific-formatter (or render-format effective-format)
                                                        results
                                                        cooked-params))
                                (let [preferred-fields (filter #(re-find #"^[^\+]" (name %)) cmd-given-fileds)]
@@ -322,8 +328,7 @@
                                                          :always (map #(mapv keyword (str/split % #"\.")))
                                                          (not (seq preferred-fields)) (into default-fields)
                                                          :always (distinct))
-                                                       (or (some-> (:output-format cooked-params) csk/->kebab-case-keyword)
-                                                           (some-> (:output-format data) csk/->kebab-case-keyword)
+                                                       (or render-format effective-format
                                                            (if (seq default-fields) :short :json))
                                                        results
                                                        (assoc cooked-params :no-header (or no-header continue?)))))

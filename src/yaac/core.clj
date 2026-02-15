@@ -2146,14 +2146,14 @@
     ["environment|{*args}"]]
    
    ;; Get assets
-   ["|" {:fields [:organization-id :group-id [:extra :group-name] :asset-id  :type :version]
+   ["|" {:fields [[:organization-id :fmt short-uuid] [:group-id :fmt short-uuid] [:extra :group-name] :asset-id  :type :version]
          :handler get-assets}
     ["asset"]
     ["asset|{*args}"]]
    
    
    ;; Get proxy
-   ["|" {:fields [:organization-id :environment-id [:id :fmt short-uuid] :application-name :type :target-type :target-name ]
+   ["|" {:fields [[:organization-id :fmt short-uuid] [:environment-id :fmt short-uuid] [:id :fmt short-uuid] :application-name :type :target-type :target-name ]
          :handler get-api-proxies}
     ["proxy"]
     ["proxy|{*args}"]]
@@ -2302,7 +2302,7 @@
     ["user"]
     ["user|{*args}"]]
 
-   ["|" {:fields [:team-name :team-id :org-id]
+   ["|" {:fields [:team-name [:team-id :fmt short-uuid] [:org-id :fmt short-uuid]]
          :handler get-teams}
     ["team"]
     ["team|{*args}"]]
