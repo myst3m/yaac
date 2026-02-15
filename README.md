@@ -95,7 +95,7 @@ yaac deploy app my-app target=hy:leibniz
 ## Install
 
 ### Prerequisites
-- Java 21+ with FFM support
+- Java 17+
 - Clojure CLI tools: [https://clojure.org/guides/install_clojure]()
 
 ### Native Image (Recommended)

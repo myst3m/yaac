@@ -103,7 +103,7 @@ yaac deploy manifest deploy.yaml --dry-run
 
 ### 必要なもの
 
-- Java 21以上
+- Java 17以上
 - Clojure CLI: https://clojure.org/guides/install_clojure
 
 ### ネイティブバイナリ（おすすめ）
