@@ -2250,14 +2250,12 @@
 
    ;; Get enttitlements
    ["|" {:handler get-entitlements
-         ;;:fields
-         ;; [:id :name
-         ;;  [:entitlements :v-cores-production :assigned :as "production"]
-         ;;  [:entitlements :v-cores-sandbox :assigned :as "sandbox"]
-         ;;  [:entitlements :static-ips :assigned :as "static-ip"]
-         ;;  [:entitlements :network-connections :assigned :as "connections"]
-         ;;  [:entitlements :vpns :assigned :as "vpn"]]
-         }
+         :fields [:name [:extra :id :fmt short-uuid]
+                  [:extra :v-cores-production :as "production"]
+                  [:extra :v-cores-sandbox :as "sandbox"]
+                  [:extra :static-ips :as "static-ips"]
+                  [:extra :network-connections :as "connections"]
+                  [:extra :vpns :as "vpns"]]}
     ["entitlement"]
     ["entitlement|{*args}"]
     ["ent"]

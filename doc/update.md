@@ -65,6 +65,19 @@ yaac update org [org] [key=value...]
 | `static-ips` | Static IPs |
 | `vpns` | VPNs |
 
+Use `yaac get ent` to check current allocations across all child orgs before updating.
+
+```bash
+# Check current entitlements
+yaac get ent T1
+
+# Update v-cores allocation
+yaac update org T1.1 v-cores-production=0.5 v-cores-sandbox=0.2
+
+# Update multiple entitlements at once
+yaac update org T1.1 static-ips=2 network-connections=1 vpns=1
+```
+
 ### CloudHub 2.0 Connection
 
 ```bash

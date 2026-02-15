@@ -472,12 +472,12 @@
                     :handler update-api-config}]
    ["|org" {:help true}]
    ["|org|{*args}" {:handler update-organization-config
-                    :fields [[:id :fmt short-uuid] :name
-                             [:entitlements :v-cores-production :assigned]
-                             [:entitlements :v-cores-sandbox :assigned]
-                             [:entitlements :static-ips :assigned]
-                             [:entitlements :network-connections :assigned]
-                             [:entitlements :vpns :assigned]]}]
+                    :fields [:name [:id :fmt short-uuid]
+                             [:entitlements :v-cores-production :assigned :as "production"]
+                             [:entitlements :v-cores-sandbox :assigned :as "sandbox"]
+                             [:entitlements :static-ips :assigned :as "static-ips"]
+                             [:entitlements :network-connections :assigned :as "connections"]
+                             [:entitlements :vpns :assigned :as "vpns"]]}]
    ["|connection" {:help true}]
    ["|conn" {:help true}]
    ["|connection|{*args}" {:handler update-cloudhub20-connection}]
