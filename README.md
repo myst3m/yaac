@@ -2,16 +2,18 @@
 
 ![GitHub License](https://img.shields.io/github/license/myst3m/yaac)
 ![GitHub Release](https://img.shields.io/github/release/myst3m/yaac)
-![GitHub Workflow Status](https://img.shields.io/github/workflow/status/myst3m/yaac/CI)
 
 A fast, UNIX-friendly CLI for MuleSoft Anypoint Platform. Built with Clojure and GraalVM native image for ~15ms startup.
+
+**[日本語](README.ja.md)**
 
 ## Features
 
 - 5x faster than Anypoint CLI v4 (GraalVM native + caching + parallel API calls)
 - HTTP/2 support for faster API communication
 - kubectl-style output friendly with UNIX tools (`grep`, `awk`, `cut`)
-- Selectable output format (short / JSON / EDN)
+- Selectable output format (short / wide / JSON / EDN / YAML)
+- Short UUID display with prefix matching (`b68cabda` instead of full UUID)
 - Embedded Maven for `yaac build` (no Maven installation needed)
 - Manifest-based multi-app deployment
 
@@ -34,27 +36,28 @@ yaac deploy app my-app target=hy:leibniz
 
 ## Command Reference
 
-| Command | Aliases | Highlight | Doc |
-|---------|---------|-----------|-----|
-| [`login`](doc/login.md) | - | Login with Connected Apps | [doc/login.md](doc/login.md) |
-| [`get`](doc/get.md) | `ls`, `list` | List orgs, envs, apps, APIs, assets, targets, metrics... | [doc/get.md](doc/get.md) |
-| [`deploy`](doc/deploy.md) | `dep` | Deploy to RTF/CH2.0/Hybrid with smart defaults | [doc/deploy.md](doc/deploy.md) |
-| [`upload`](doc/upload.md) | `up` | Upload JAR/RAML/OAS to Exchange | [doc/upload.md](doc/upload.md) |
-| [`create`](doc/create.md) | `new` | Create orgs, envs, APIs, Connected Apps, policies... | [doc/create.md](doc/create.md) |
-| [`delete`](doc/delete.md) | `rm`, `del` | Delete resources with `--dry-run` / `--force` | [doc/delete.md](doc/delete.md) |
-| [`describe`](doc/describe.md) | `desc` | Detailed info for a single resource | [doc/describe.md](doc/describe.md) |
-| [`update`](doc/update.md) | `upd` | Update app state, replicas, policies, scopes... | [doc/update.md](doc/update.md) |
-| [`download`](doc/download.md) | `dl` | Download API proxy as JAR | [doc/download.md](doc/download.md) |
-| [`config`](doc/config.md) | `cfg` | Set default org/env/target, manage credentials | [doc/config.md](doc/config.md) |
-| [`build`](doc/build.md) | - | Run Maven goals with embedded Maven | [doc/build.md](doc/build.md) |
-| [`logs`](doc/logs.md) | - | View CloudHub 2.0 application logs | [doc/logs.md](doc/logs.md) |
-| [`http`](doc/http.md) | - | Send HTTP requests to deployed apps | [doc/http.md](doc/http.md) |
-| [`auth`](doc/auth.md) | - | External OAuth2 flow (Azure AD) | [doc/auth.md](doc/auth.md) |
+| Command | Aliases | Description | Doc |
+|---------|---------|-------------|-----|
+| `login` | - | Login with Connected Apps | [doc/login.md](doc/login.md) |
+| `get` | `ls`, `list` | List resources (orgs, envs, apps, APIs, assets...) | [doc/get.md](doc/get.md) |
+| `describe` | `desc` | Detailed info for a single resource | [doc/describe.md](doc/describe.md) |
+| `create` | `new` | Create orgs, envs, APIs, Connected Apps, policies... | [doc/create.md](doc/create.md) |
+| `update` | `upd` | Update app state, replicas, policies, scopes... | [doc/update.md](doc/update.md) |
+| `delete` | `rm`, `del` | Delete resources with `--dry-run` / `--force` | [doc/delete.md](doc/delete.md) |
+| `deploy` | `dep` | Deploy to RTF / CH2.0 / Hybrid with smart defaults | [doc/deploy.md](doc/deploy.md) |
+| `upload` | `up` | Upload JAR / RAML / OAS to Exchange | [doc/upload.md](doc/upload.md) |
+| `download` | `dl` | Download API proxy as JAR | [doc/download.md](doc/download.md) |
+| `config` | `cfg` | Set default org/env/target, manage credentials | [doc/config.md](doc/config.md) |
+| `build` | - | Run Maven goals with embedded Maven | [doc/build.md](doc/build.md) |
+| `logs` | - | View CloudHub 2.0 application logs | [doc/logs.md](doc/logs.md) |
+| `http` | - | Send HTTP requests to deployed apps | [doc/http.md](doc/http.md) |
+| `auth` | - | External OAuth2 flow (Azure AD) | [doc/auth.md](doc/auth.md) |
+| `clear` | - | Clear all resources in an org (except RTF/PS) | [doc/delete.md](doc/delete.md#clear) |
 
 ## Global Options
 
 ```
--o, --output-format FORMAT    Output format: short, json, edn (default: short)
+-o, --output-format FORMAT    Output format: short, wide, json, edn, yaml
 -H, --no-header               No header (for piping to UNIX tools)
 -F, --fields FIELDS           Select/add output fields (-F id,name or -F +org-type)
 -V, --http-trace              Show HTTP request/response flow
@@ -65,24 +68,29 @@ yaac deploy app my-app target=hy:leibniz
 -h, --help                    Help
 ```
 
-## Deploy Shorthand
-
-`yaac deploy app` supports smart argument completion:
+## Common Patterns
 
 ```bash
-# Shortest: app name only (org, asset, version auto-completed)
+# JSON output for scripting
+yaac get app -o json | jq '.[] | .name'
+
+# No header for piping
+yaac get app -H | awk '{print $3}'
+
+# Wide output (extra columns)
+yaac get app -o wide
+
+# Short UUID - use prefix to identify resources
+yaac get org                     # Shows: b68cabda (short ID)
+yaac desc org b68cabda           # Prefix match works in arguments
+
+# Field selection
+yaac get org -F id,name
+yaac get org -F +org-type        # Add extra field
+
+# Deploy shorthand (org/asset/version auto-completed)
 yaac deploy app my-app target=hy:leibniz
-
-# Org + app (env from default context)
-yaac deploy app T1 my-app target=hy:leibniz
-
-# Full specification
-yaac deploy app T1 Production my-app -g T1 -a hello-app -v 0.0.1 target=ch2:cloudhub-ap-northeast-1
 ```
-
-Target prefixes: `hy:` (Hybrid), `rtf:` (Runtime Fabric), `ch2:` / `ch20:` (CloudHub 2.0)
-
-See [doc/deploy.md](doc/deploy.md) for full details.
 
 ## Install
 
@@ -109,27 +117,12 @@ clj -T:build uber
 java --enable-native-access=ALL-UNNAMED -jar target/yaac-0.9.1.jar
 ```
 
-### Build Tasks
-
-| Task | Command |
-|------|---------|
-| Clean | `clj -T:build clean` |
-| Uberjar | `clj -T:build uber` |
-| Native | `clj -T:build native-image` |
-
 ### Bash Completion
 
 ```bash
 mkdir -p ~/.local/share/bash-completion/completions
 cp completions/yaac.bash ~/.local/share/bash-completion/completions/yaac
 ```
-
-## Architecture
-
-| Platform | Support |
-|----------|---------|
-| GNU/Linux x86-64 | Native binary |
-| All platforms with Java 21+ | Uberjar |
 
 ## License
 

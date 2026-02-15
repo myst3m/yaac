@@ -110,6 +110,24 @@ yaac delete ps [org] <name|id> [--force]
 yaac delete mg [org] [env] <name|id>
 ```
 
+## clear
+
+`yaac clear org` is a separate top-level command that deletes most resources in an organization without deleting the org itself. RTF clusters and Private Spaces are NOT deleted.
+
+```bash
+yaac clear org <org|id> [--dry-run]
+```
+
+Deletes in order: apps, APIs, gateways, secret groups, assets.
+
+```bash
+# Preview what would be deleted
+yaac clear org T1 --dry-run
+
+# Actually clear
+yaac clear org T1
+```
+
 ## Examples
 
 ```bash
