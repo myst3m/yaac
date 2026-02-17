@@ -155,11 +155,14 @@
 
 (defn describe-organization [{:keys [args]
                               [org] :args}]
-  (let [org-id (org->id (or org *org*))]
-    (->> @(http/get (format (gen-url "/accounts/api/organizations/%s") org-id)
-                   {:headers (default-headers)})
-         (parse-response)
-         :body)))
+  (let [org-id (org->id (or org *org*))
+        body (->> @(http/get (format (gen-url "/accounts/api/organizations/%s") org-id)
+                             {:headers (default-headers)})
+                  (parse-response)
+                  :body)]
+    (assoc body :extra {:owner (get-in body [:owner :email])
+                        :envs (count (:environments body))
+                        :idp (:idprovider-id body)})))
 
 (defn describe-environments [{:keys [args]
                               [org env] :args}]
@@ -225,10 +228,42 @@
      ["" {:help true}]   
      ["|-h" {:help true}]
 
-     ["|org" {:handler describe-organization}]
-     ["|organization" {:handler describe-organization}]
-     ["|org|{*args}" {:handler describe-organization}]
-     ["|organization|{*args}" {:handler describe-organization}]
+     ["|org" {:handler describe-organization
+               :fields [:name [:id :fmt short-uuid]
+                        [:extra :owner] [:extra :envs]
+                        [:entitlements :v-cores-production :assigned :as "production"]
+                        [:entitlements :v-cores-sandbox :assigned :as "sandbox"]
+                        [:entitlements :static-ips :assigned :as "static-ips"]
+                        [:entitlements :network-connections :assigned :as "connections"]
+                        [:entitlements :vpns :assigned :as "vpns"]
+                        [:extra :idp]]}]
+     ["|organization" {:handler describe-organization
+                        :fields [:name [:id :fmt short-uuid]
+                                 [:extra :owner] [:extra :envs]
+                                 [:entitlements :v-cores-production :assigned :as "production"]
+                                 [:entitlements :v-cores-sandbox :assigned :as "sandbox"]
+                                 [:entitlements :static-ips :assigned :as "static-ips"]
+                                 [:entitlements :network-connections :assigned :as "connections"]
+                                 [:entitlements :vpns :assigned :as "vpns"]
+                                 [:extra :idp]]}]
+     ["|org|{*args}" {:handler describe-organization
+                       :fields [:name [:id :fmt short-uuid]
+                                [:extra :owner] [:extra :envs]
+                                [:entitlements :v-cores-production :assigned :as "production"]
+                                [:entitlements :v-cores-sandbox :assigned :as "sandbox"]
+                                [:entitlements :static-ips :assigned :as "static-ips"]
+                                [:entitlements :network-connections :assigned :as "connections"]
+                                [:entitlements :vpns :assigned :as "vpns"]
+                                [:extra :idp]]}]
+     ["|organization|{*args}" {:handler describe-organization
+                                :fields [:name [:id :fmt short-uuid]
+                                         [:extra :owner] [:extra :envs]
+                                         [:entitlements :v-cores-production :assigned :as "production"]
+                                         [:entitlements :v-cores-sandbox :assigned :as "sandbox"]
+                                         [:entitlements :static-ips :assigned :as "static-ips"]
+                                         [:entitlements :network-connections :assigned :as "connections"]
+                                         [:entitlements :vpns :assigned :as "vpns"]
+                                         [:extra :idp]]}]
 
      ["|env" {:handler describe-environments
                :fields [:name :id :type

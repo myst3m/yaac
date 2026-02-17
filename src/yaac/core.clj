@@ -1458,10 +1458,10 @@
   (log/debug "Opts:" opts)
   (let [{:keys [all]} opts
         wide? (= :wide (keyword (or output-format "")))
-        ;; 引数が1つの場合は検索語として扱い、org/envはデフォルトを使う
+        ;; 引数: 0=デフォルト, 1=org, 2=org+env, 3=org+env+search
         [org env search] (case (count args)
                            0 [*org* *env* nil]
-                           1 [*org* *env* (first args)]
+                           1 [(first args) *env* nil]
                            2 [(first args) (second args) nil]
                            [(first args) (second args) (nth args 2 nil)])
         search-term (or search-term search)]
