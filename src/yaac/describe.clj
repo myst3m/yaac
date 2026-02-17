@@ -20,7 +20,7 @@
                                add-extra-fields short-uuid
                                org->id env->id app->id target->id
                                org->name env->name load-session! -get-deployed-applications
-                               -get-client-provider
+                               -enrich-application -get-client-provider
                                gen-url] :as yc]
             [yaac.error :as e]
             [clojure.string :as str]
@@ -163,13 +163,24 @@
 
 (defn describe-environments [{:keys [args]
                               [org env] :args}]
-  (let [org-id (org->id (or org *org*))
-        env-id (env->id org-id (or env *env*))]
-
-    (->> @(http/get (format (gen-url "/accounts/api/organizations/%s/environments/%s") org-id env-id)
-                   {:headers (default-headers)})
-         (parse-response)
-         :body)))
+  (let [org (or org *org*)
+        env (or env *env*)
+        org-id (org->id org)
+        env-id (env->id org-id env)
+        env-info (->> @(http/get (format (gen-url "/accounts/api/organizations/%s/environments/%s") org-id env-id)
+                                 {:headers (default-headers)})
+                      (parse-response)
+                      :body)
+        ;; デプロイ済みアプリのvCoreサマリ取得
+        apps (try (->> (-get-deployed-applications org env)
+                       (pmap #(-enrich-application org env %)))
+                  (catch Exception _ []))
+        total-vcores (/ (Math/round (* (reduce + 0 (keep #(get-in % [:application :v-cores]) apps)) 10000.0)) 10000.0)
+        total-replicas (reduce + 0 (keep #(get-in % [:target :replicas]) apps))
+]
+    (assoc env-info :extra {:apps (count apps)
+                            :total-v-cores total-vcores
+                            :total-replicas total-replicas})))
 
 (defn describe-client-provider [{:keys [args]
                                   [cp-name-or-id] :args}]
@@ -219,10 +230,26 @@
      ["|org|{*args}" {:handler describe-organization}]
      ["|organization|{*args}" {:handler describe-organization}]
 
-     ["|env" {:handler describe-environments}]
-     ["|env|{*args}" {:handler describe-environments}]
-     ["|environment" {:handler describe-environments}]
-     ["|environment|{*args}" {:handler describe-environments}]
+     ["|env" {:handler describe-environments
+               :fields [:name :id :type
+                        [:extra :apps :as "apps"]
+                        [:extra :total-v-cores :as "v-cores"]
+                        [:extra :total-replicas :as "replicas"]]}]
+     ["|env|{*args}" {:handler describe-environments
+                       :fields [:name :id :type
+                                [:extra :apps :as "apps"]
+                                [:extra :total-v-cores :as "v-cores"]
+                                [:extra :total-replicas :as "replicas"]]}]
+     ["|environment" {:handler describe-environments
+                       :fields [:name :id :type
+                                [:extra :apps :as "apps"]
+                                [:extra :total-v-cores :as "v-cores"]
+                                [:extra :total-replicas :as "replicas"]]}]
+     ["|environment|{*args}" {:handler describe-environments
+                               :fields [:name :id :type
+                                        [:extra :apps :as "apps"]
+                                        [:extra :total-v-cores :as "v-cores"]
+                                        [:extra :total-replicas :as "replicas"]]}]
      
      ["|app" {:help true}]
      ["|application" {:help true}]

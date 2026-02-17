@@ -54,6 +54,7 @@
              "    - replicas"
              "    - runtime-version"
              "    - state=<start|stop>"
+             "    - tracing=<true|false>"
              "  asset"
              "    - labels"
              "    Note: -g defaults to current org, -v defaults to latest version"
@@ -176,7 +177,7 @@
 
 
 
-(defn update-app-config [{:keys [args v-cores replicas runtime-version state all group asset version]}]
+(defn update-app-config [{:keys [args v-cores replicas runtime-version state all group asset version tracing]}]
   (let [[app-name env org] (reverse args) ;; app has to be specified
         target-org-id (yc/org->id (or org *org*))           ;; If specified, use it
         target-env-id (yc/env->id target-org-id (or env *env*))
@@ -222,7 +223,9 @@
                                                                         runtime-version (assoc-in [:target :deployment-settings :runtime-version] (first runtime-version))
                                                                         state (assoc-in [:application :desired-state] (condp = (keyword (str/lower-case (first state)))
                                                                                                                         :start "STARTED"
-                                                                                                                        :stop "STOPPED"))))})))
+                                                                                                                        :stop "STOPPED"))
+                                                                        tracing (assoc-in [:target :deployment-settings :tracing-enabled]
+                                                                                          (parse-boolean (first tracing)))))})))
                              (parse-response)
                              :body
                              (yc/add-extra-fields :status #(get-in % [:status])

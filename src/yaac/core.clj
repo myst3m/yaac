@@ -1441,6 +1441,18 @@
            (filter #(prefix-match? app (str (:id %))))))))
 
 
+(defn- -append-vcore-total
+  "wide表示時にvCore/replicas合計のサマリ行を末尾に追加"
+  [apps]
+  (let [apps (vec apps)
+        total-vcores (reduce + 0 (keep #(get-in % [:application :v-cores]) apps))
+        total-replicas (reduce + 0 (keep #(get-in % [:target :replicas]) apps))]
+    (if (seq apps)
+      (conj apps {:name "TOTAL"
+                  :application {:v-cores (/ (Math/round (* total-vcores 10000.0)) 10000.0)}
+                  :target {:replicas total-replicas}})
+      apps)))
+
 (defn get-deployed-applications [{:keys [args no-multi-thread search-term output-format]
                                   :as opts}]
   (log/debug "Opts:" opts)
@@ -1465,14 +1477,14 @@
                                         (catch Exception e (log/debug (ex-cause e))))))
                     (apply concat)
                     (filter #(re-find (re-pattern (or search-term ".")) (:name %))))
-        wide? (pmap #(-enrich-application (get-in % [:extra :org]) (get-in % [:extra :env]) %)))
+        wide? ((comp -append-vcore-total #(pmap (fn [a] (-enrich-application (get-in a [:extra :org]) (get-in a [:extra :env]) a)) %))))
       (if-not (and org env)
         (throw (e/invalid-arguments "Org and Env need to be specified" {:args args
                                                                         :availables {:org (map :name (-get-organizations))
                                                                                     :env (map :name (-get-environments org))}}))
         (cond->> (->> (-get-deployed-applications org env)
                       (filter #(re-find (re-pattern (or (str/join search-term) ".")) (:name %))))
-          wide? (pmap #(-enrich-application org env %)))))))
+          wide? ((comp -append-vcore-total #(pmap (fn [a] (-enrich-application org env a)) %))))))))
 
 
 (defn -get-api-contracts [org env api]
