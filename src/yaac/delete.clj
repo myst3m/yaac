@@ -69,7 +69,7 @@
             ["Resources:"
              ""
              "  - org <org|id> [--force]                           Delete business group."
-             "  - asset -g GROUP -a ASSET -v VERSION [options]     Delete asset."
+             "  - asset [org] <asset> [version] [options]           Delete asset."
              "  - app [org] [env] <app|id>                         Delete deployed application."
              "  - api [org] [env] <api|id>                         Delete deployed api instances."
              "  - idp-user <email> provider=<name>                 Delete IdP user profile."
@@ -242,6 +242,7 @@
           (do (println (format "Deleting %d application(s)..." (count apps)))
               (->> apps
                    (pmap #(-delete-application (:_org %) (:_env %) %))
+                   (apply concat)
                    (vec)))
 
           :else
@@ -276,16 +277,26 @@
 (defn delete-asset [{:keys [args group asset version all hard-delete]
                      :as opts}]
 
-  (let [group (or group *org*)
+  (let [[a1 a2 a3] args
+        ;; Positional args: [asset], [org asset], or [org asset version]
+        [p-asset p-org p-version] (case (count args)
+                                    1 [a1 nil nil]
+                                    2 [a2 a1 nil]
+                                    3 [a2 a1 a3]
+                                    [nil nil nil])
+        group (or group p-org *org*)
         group-id (and group (org->id group))
-        artifact-id asset]
+        artifact-id (or asset p-asset)
+        version (or version p-version)
+        ;; If no version and no -A flag, but asset is specified, default to -A
+        all (if (and artifact-id (not version) (not all)) true all)]
     (if-not (and group-id artifact-id (or version all))
       (throw (e/invalid-arguments "Group, Asset and version need to to be specified" {:group group
                                                                                       :asset asset
                                                                                       :version version
                                                                                       :all all}))
       (let [vs (if all
-                 (map :version (yc/get-assets {:group group :asset asset}))
+                 (map :version (yc/get-assets {:group group :asset artifact-id}))
                  [version])]
         (try
           (->> vs
