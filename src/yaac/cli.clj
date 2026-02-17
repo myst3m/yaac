@@ -29,6 +29,7 @@
             [yaac.describe :as desc]
             [yaac.update :as upd]
             [yaac.config :as cnf]
+            [yaac.mcp]
             [yaac.logs :as logs]
             [yaac.nrepl]
             [yaac.analyze :as ana]
@@ -157,6 +158,8 @@
                        yaac.update/route
                        ;; Config
                        yaac.config/route
+                       ;; MCP
+                       yaac.mcp/route
                        ;; DataWeave
                        ;;yaac.dw/route
                        ]))
@@ -281,9 +284,9 @@
               (loop []
                 (let [results (util/with-spin "Processing..." (handler cooked-params))]
                 (if (= :raw (:output-format data))
-                  
+
                   (do (async/put! *console* \newline)
-                      (async/put! *console* (yutil/json-pprint results))
+                      (async/put! *console* (if (string? results) results (yutil/json-pprint results)))
                       (async/put! *console* \newline)
                       (async/>! *console* :done))
                   (let [

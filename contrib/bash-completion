@@ -9,7 +9,7 @@ _yaac_completions() {
     local global_opts="-o --output-format -H --no-header -d --debug -U --base-url -P --progress -V --http-trace -X --http-trace-detail -Z --no-cache -1 --http1 -h --help"
 
     # Main commands
-    local commands="login get upload deploy delete clear create describe update download config auth http logs"
+    local commands="login get upload deploy delete clear create describe update download config auth http logs mcp"
 
     # Subcommands for each main command
     local get_subcmds="org organization env environment app application api api-instance asset proxy gw gateway rtf runtime-fabric rtt runtime-target ps private-space serv server ent entitlement np node-port cont contract capp connected-app scopes scope user sg secret-group"
@@ -25,6 +25,8 @@ _yaac_completions() {
     local auth_subcmds="azure"
     local logs_subcmds="app application"
     local http_subcmds="get post put patch delete"
+    local mcp_subcmds="init tool tools call session clear"
+    local mcp_opts="-L --list"
 
     # Output format options
     local output_formats="short json edn yaml"
@@ -60,7 +62,7 @@ _yaac_completions() {
     local i
     for ((i=1; i < cword; i++)); do
         case "${words[i]}" in
-            login|get|upload|deploy|delete|clear|create|describe|update|download|config|auth|http|logs)
+            login|get|upload|deploy|delete|clear|create|describe|update|download|config|auth|http|logs|mcp)
                 cmd="${words[i]}"
                 if [[ $((i+1)) -lt $cword ]]; then
                     subcmd="${words[i+1]}"
@@ -257,6 +259,37 @@ _yaac_completions() {
         http)
             if [[ -z "$subcmd" ]] || [[ "$cur" != -* && "${words[cword-1]}" == "http" ]]; then
                 COMPREPLY=($(compgen -W "$http_subcmds" -- "$cur"))
+            elif [[ "$cur" == -* ]]; then
+                COMPREPLY=($(compgen -W "$global_opts" -- "$cur"))
+            fi
+            ;;
+        mcp)
+            if [[ -z "$subcmd" ]] || [[ "$cur" != -* && "${words[cword-1]}" == "mcp" ]]; then
+                COMPREPLY=($(compgen -W "$mcp_subcmds" -- "$cur"))
+            elif [[ "$subcmd" == "tool" || "$subcmd" == "tools" ]]; then
+                if [[ "$cur" == -* ]]; then
+                    COMPREPLY=($(compgen -W "$global_opts $mcp_opts" -- "$cur"))
+                else
+                    # Complete tool names from cache file
+                    local cache_file="$HOME/.silvur/mcp-tools-cache"
+                    if [[ -f "$cache_file" ]]; then
+                        COMPREPLY=($(compgen -W "$(cat "$cache_file")" -- "$cur"))
+                    fi
+                fi
+            elif [[ "$subcmd" == "call" ]]; then
+                # First arg after 'call' = tool name, rest = key=value (no completion)
+                local args_after_subcmd=0
+                for ((j=i+2; j < cword; j++)); do
+                    [[ "${words[j]}" != -* ]] && ((args_after_subcmd++))
+                done
+                if [[ $args_after_subcmd -eq 0 && "$cur" != -* ]]; then
+                    local cache_file="$HOME/.silvur/mcp-tools-cache"
+                    if [[ -f "$cache_file" ]]; then
+                        COMPREPLY=($(compgen -W "$(cat "$cache_file")" -- "$cur"))
+                    fi
+                elif [[ "$cur" == -* ]]; then
+                    COMPREPLY=($(compgen -W "$global_opts" -- "$cur"))
+                fi
             elif [[ "$cur" == -* ]]; then
                 COMPREPLY=($(compgen -W "$global_opts" -- "$cur"))
             fi
