@@ -30,6 +30,7 @@
             [yaac.update :as upd]
             [yaac.config :as cnf]
             [yaac.mcp]
+            [yaac.a2a]
             [yaac.logs :as logs]
             [yaac.nrepl]
             [yaac.analyze :as ana]
@@ -160,6 +161,8 @@
                        yaac.config/route
                        ;; MCP
                        yaac.mcp/route
+                       ;; A2A
+                       yaac.a2a/route
                        ;; DataWeave
                        ;;yaac.dw/route
                        ]))

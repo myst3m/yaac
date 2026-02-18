@@ -9,7 +9,7 @@ _yaac_completions() {
     local global_opts="-o --output-format -H --no-header -d --debug -U --base-url -P --progress -V --http-trace -X --http-trace-detail -Z --no-cache -1 --http1 -h --help"
 
     # Main commands
-    local commands="login get upload deploy delete clear create describe update download config auth http logs mcp"
+    local commands="login get upload deploy delete clear create describe update download config auth http logs mcp a2a"
 
     # Subcommands for each main command
     local get_subcmds="org organization env environment app application api api-instance asset proxy gw gateway rtf runtime-fabric rtt runtime-target ps private-space serv server ent entitlement np node-port cont contract capp connected-app scopes scope user sg secret-group"
@@ -27,6 +27,7 @@ _yaac_completions() {
     local http_subcmds="get post put patch delete"
     local mcp_subcmds="init tool tools call session clear"
     local mcp_opts="-L --list"
+    local a2a_subcmds="init send task cancel card session clear"
 
     # Output format options
     local output_formats="short json edn yaml"
@@ -62,7 +63,7 @@ _yaac_completions() {
     local i
     for ((i=1; i < cword; i++)); do
         case "${words[i]}" in
-            login|get|upload|deploy|delete|clear|create|describe|update|download|config|auth|http|logs|mcp)
+            login|get|upload|deploy|delete|clear|create|describe|update|download|config|auth|http|logs|mcp|a2a)
                 cmd="${words[i]}"
                 if [[ $((i+1)) -lt $cword ]]; then
                     subcmd="${words[i+1]}"
@@ -290,6 +291,13 @@ _yaac_completions() {
                 elif [[ "$cur" == -* ]]; then
                     COMPREPLY=($(compgen -W "$global_opts" -- "$cur"))
                 fi
+            elif [[ "$cur" == -* ]]; then
+                COMPREPLY=($(compgen -W "$global_opts" -- "$cur"))
+            fi
+            ;;
+        a2a)
+            if [[ -z "$subcmd" ]] || [[ "$cur" != -* && "${words[cword-1]}" == "a2a" ]]; then
+                COMPREPLY=($(compgen -W "$a2a_subcmds" -- "$cur"))
             elif [[ "$cur" == -* ]]; then
                 COMPREPLY=($(compgen -W "$global_opts" -- "$cur"))
             fi
