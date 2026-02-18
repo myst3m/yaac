@@ -2274,8 +2274,8 @@
                   [:extra :static-ips :as "static-ips"]
                   [:extra :network-connections :as "connections"]
                   [:extra :vpns :as "vpns"]
-                  [:extra :managed-gateway-large :as "gw-large"]
-                  [:extra :managed-gateway-small :as "gw-small"]]}
+                  [:extra :managed-gateway-large :as "fgw-large"]
+                  [:extra :managed-gateway-small :as "fgw-small"]]}
     ["entitlement"]
     ["entitlement|{*args}"]
     ["ent"]
