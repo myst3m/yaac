@@ -809,36 +809,32 @@
 ;; Delete Managed Flex Gateway
 
 (defn delete-managed-gateway
-  "Delete a Managed Flex Gateway
+  "Delete a Flex Gateway (auto-detects standalone or managed)
 
-   Usage: yaac delete gateway <org> <env> <gateway-name-or-id> -M"
-  [{:keys [args managed] :as opts}]
+   Usage: yaac delete gateway <org> <env> <gateway-name-or-id>"
+  [{:keys [args] :as opts}]
   (let [[gw env org] (reverse args)
         org (or org *org*)
         env (or env *env*)]
-    (cond
-      (not managed)
-      (throw (e/invalid-arguments "Use -M/--managed flag for Managed Flex Gateway" {}))
-
-      (not (and org env gw))
-      (throw (e/invalid-arguments "Org, Env and Gateway need to be specified" {:args args}))
-
-      :else
-      (let [org-id (org->id org)
-            env-id (env->id org env)
-            ;; Get gateway ID from managed gateways only
-            gw-id (or (->> (-get-managed-gateways org env)
+    (when-not (and org env gw)
+      (throw (e/invalid-arguments "Org, Env and Gateway need to be specified" {:args args})))
+    (let [org-id (org->id org)
+          env-id (env->id org env)
+          ;; Search all gateways (standalone + managed) and auto-detect type
+          matched (or (->> (-get-gateways org env)
                            (filter #(or (= (:name %) gw) (= (:id %) gw)))
-                           first
-                           :id)
-                      (throw (e/no-item "Managed gateway not found" {:name gw})))]
-        (util/spin (str "Deleting Managed Flex Gateway " gw "..."))
-        (-> @(http/delete (format (gen-url "/gatewaymanager/api/v1/organizations/%s/environments/%s/gateways/%s")
-                                  org-id env-id gw-id)
-                         {:headers (default-headers)})
-            (parse-response)
-            (dissoc :body)
-            (assoc :deleted-gateway gw))))))
+                           first)
+                      (throw (e/no-item "Gateway not found" {:name gw})))
+          gw-id (:id matched)
+          source (:source matched)
+          url (if (= source "standalone")
+                (format (gen-url "/standalone/api/v1/organizations/%s/environments/%s/gateways/%s") org-id env-id gw-id)
+                (format (gen-url "/gatewaymanager/api/v1/organizations/%s/environments/%s/gateways/%s") org-id env-id gw-id))]
+      (util/spin (str "Deleting " source " Flex Gateway " gw "..."))
+      (-> @(http/delete url {:headers (default-headers)})
+          (parse-response)
+          (dissoc :body)
+          (assoc :deleted-gateway gw :source source)))))
 
 
 (defn delete-idp-user-profile [{:keys [args provider]}]

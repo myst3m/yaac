@@ -1598,13 +1598,17 @@
 (s/def :entitlement/static-ips number?)
 (s/def :entitlement/network-connections number?)
 (s/def :entitlement/vpns number?)
+(s/def :entitlement/managed-gateway-large (s/nilable number?))
+(s/def :entitlement/managed-gateway-small (s/nilable number?))
 (s/def :entitlement/view (s/coll-of (s/keys :req-un [::id
                                                      ::name
                                                      :entitlement/v-cores-production
                                                      :entitlement/v-cores-sandbox
                                                      :entitlement/static-ips
                                                      :entitlement/network-connections
-                                                     :entitlement/vpns])))
+                                                     :entitlement/vpns]
+                                    :opt-un [:entitlement/managed-gateway-large
+                                             :entitlement/managed-gateway-small])))
 
 (defn get-entitlements [{:keys [args]}]
   {:post [(s/valid? :entitlement/view (map :extra %))]}
@@ -1625,11 +1629,13 @@
                     []))
       true (add-extra-fields :id :id
                              :name :name
-                             :v-cores-production (comp  :assigned :v-cores-production :entitlements)
-                             :v-cores-sandbox (comp  :assigned :v-cores-sandbox :entitlements)
-                             :static-ips (comp  :assigned :static-ips :entitlements)
-                             :network-connections (comp  :assigned :network-connections :entitlements)
-                             :vpns (comp  :assigned :vpns :entitlements)))))
+                             :v-cores-production (comp :assigned :v-cores-production :entitlements)
+                             :v-cores-sandbox (comp :assigned :v-cores-sandbox :entitlements)
+                             :static-ips (comp :assigned :static-ips :entitlements)
+                             :network-connections (comp :assigned :network-connections :entitlements)
+                             :vpns (comp :assigned :vpns :entitlements)
+                             :managed-gateway-large (comp :assigned :managed-gateway-large :entitlements)
+                             :managed-gateway-small (comp :assigned :managed-gateway-small :entitlements)))))
 
 (defn -get-available-node-ports [org]
   (let [org-id (org->id org)
@@ -2267,7 +2273,9 @@
                   [:extra :v-cores-sandbox :as "sandbox"]
                   [:extra :static-ips :as "static-ips"]
                   [:extra :network-connections :as "connections"]
-                  [:extra :vpns :as "vpns"]]}
+                  [:extra :vpns :as "vpns"]
+                  [:extra :managed-gateway-large :as "gw-large"]
+                  [:extra :managed-gateway-small :as "gw-small"]]}
     ["entitlement"]
     ["entitlement|{*args}"]
     ["ent"]

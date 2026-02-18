@@ -236,6 +236,8 @@
                         [:entitlements :static-ips :assigned :as "static-ips"]
                         [:entitlements :network-connections :assigned :as "connections"]
                         [:entitlements :vpns :assigned :as "vpns"]
+                        [:entitlements :managed-gateway-large :assigned :as "gw-large"]
+                        [:entitlements :managed-gateway-small :assigned :as "gw-small"]
                         [:extra :idp]]}]
      ["|organization" {:handler describe-organization
                         :fields [:name [:id :fmt short-uuid]
@@ -245,6 +247,8 @@
                                  [:entitlements :static-ips :assigned :as "static-ips"]
                                  [:entitlements :network-connections :assigned :as "connections"]
                                  [:entitlements :vpns :assigned :as "vpns"]
+                                 [:entitlements :managed-gateway-large :assigned :as "gw-large"]
+                                 [:entitlements :managed-gateway-small :assigned :as "gw-small"]
                                  [:extra :idp]]}]
      ["|org|{*args}" {:handler describe-organization
                        :fields [:name [:id :fmt short-uuid]
@@ -254,6 +258,8 @@
                                 [:entitlements :static-ips :assigned :as "static-ips"]
                                 [:entitlements :network-connections :assigned :as "connections"]
                                 [:entitlements :vpns :assigned :as "vpns"]
+                                [:entitlements :managed-gateway-large :assigned :as "gw-large"]
+                                [:entitlements :managed-gateway-small :assigned :as "gw-small"]
                                 [:extra :idp]]}]
      ["|organization|{*args}" {:handler describe-organization
                                 :fields [:name [:id :fmt short-uuid]
@@ -263,6 +269,8 @@
                                          [:entitlements :static-ips :assigned :as "static-ips"]
                                          [:entitlements :network-connections :assigned :as "connections"]
                                          [:entitlements :vpns :assigned :as "vpns"]
+                                         [:entitlements :managed-gateway-large :assigned :as "gw-large"]
+                                         [:entitlements :managed-gateway-small :assigned :as "gw-small"]
                                          [:extra :idp]]}]
 
      ["|env" {:handler describe-environments
