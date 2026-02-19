@@ -66,6 +66,8 @@
              "    - network-connections"
              "    - static-ips"
              "    - vpns"
+             "    - fgw-large"
+             "    - fgw-small"
              "  conn|connection"
              "    - static-routes         : ex. +172.17.0.0/16,+192.168.11.0/24"
              "  connected-app"
@@ -234,7 +236,8 @@
 ))
                        :else (throw (e/runtime-target-not-found "Not implemented")))))))))
 
-(defn update-organization-config [{:keys [args v-cores-production v-cores-sandbox static-ips network-connections vpns]
+(defn update-organization-config [{:keys [args v-cores-production v-cores-sandbox static-ips network-connections vpns
+                                         fgw-large fgw-small]
                                    [org] :args}]
   (let [org-id (org->id (or org *org*))
         body (cond-> {:id org-id}
@@ -242,7 +245,9 @@
                v-cores-sandbox (assoc-in [:entitlements :v-cores-sandbox :assigned] (parse-double (first v-cores-sandbox)))
                static-ips (assoc-in [:entitlements :static-ips :assigned] (parse-long (first static-ips)))
                network-connections (assoc-in [:entitlements :network-connections :assigned] (parse-long (first network-connections)))
-               vpns (assoc-in [:entitlements :vpns :assigned] (parse-long (first vpns))))]
+               vpns (assoc-in [:entitlements :vpns :assigned] (parse-long (first vpns)))
+               fgw-large (assoc-in [:entitlements :managed-gateway-large :assigned] (parse-long (first fgw-large)))
+               fgw-small (assoc-in [:entitlements :managed-gateway-small :assigned] (parse-long (first fgw-small))))]
     (->> @(http/put (format (gen-url "/accounts/api/organizations/%s") org-id)
                    {:headers (default-headers)
                     :body (edn->json body)})
@@ -480,7 +485,9 @@
                              [:entitlements :v-cores-sandbox :assigned :as "sandbox"]
                              [:entitlements :static-ips :assigned :as "static-ips"]
                              [:entitlements :network-connections :assigned :as "connections"]
-                             [:entitlements :vpns :assigned :as "vpns"]]}]
+                             [:entitlements :vpns :assigned :as "vpns"]
+                             [:entitlements :managed-gateway-large :assigned :as "fgw-large"]
+                             [:entitlements :managed-gateway-small :assigned :as "fgw-small"]]}]
    ["|connection" {:help true}]
    ["|conn" {:help true}]
    ["|connection|{*args}" {:handler update-cloudhub20-connection}]

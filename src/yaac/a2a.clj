@@ -29,7 +29,7 @@
           (when help-all
             ["Commands:"
              ""
-             "  init [org] [env] <app>           Connect to A2A agent (resolve public URL)"
+             "  init [org] [env] <app> [/path]   Connect to A2A agent (resolve public URL)"
              "  init <url>                        Connect to A2A agent (direct URL)"
              "  send <message...>                 Send message to agent"
              "  task <task-id>                    Get task status"
@@ -40,7 +40,9 @@
              ""
              "Examples:"
              ""
-             "  yaac a2a init T1 Sandbox my-a2a-app"
+             "  yaac a2a init my-a2a-app"
+             "  yaac a2a init my-a2a-app /order-fulfillment"
+             "  yaac a2a init T1 Sandbox my-a2a-app /order-fulfillment"
              "  yaac a2a init https://my-agent.cloudhub.io"
              "  yaac a2a send Hello, what can you do?"
              "  yaac a2a task abc-123"
@@ -51,21 +53,25 @@
 (def options [])
 
 (defn- resolve-a2a-url
-  "Resolve app name to A2A endpoint URL via describe-application."
+  "Resolve app name to A2A endpoint URL via describe-application.
+   Last arg starting with / is treated as agent path."
   [args]
-  (let [[org env app] (case (count args)
+  (let [;; Extract agent path (last arg starting with /)
+        agent-path (when (str/starts-with? (last args) "/") (last args))
+        args (if agent-path (butlast args) args)
+        [org env app] (case (count args)
                         1 [*org* *env* (first args)]
                         2 [(first args) *env* (second args)]
                         3 args
                         (throw (e/invalid-arguments
-                                "Usage: yaac a2a init [org] [env] <app>"
+                                "Usage: yaac a2a init [org] [env] <app> [/agent-path]"
                                 {:args args})))
-        _ (log/debug "Resolving A2A URL for:" org env app)
+        _ (log/debug "Resolving A2A URL for:" org env app "path:" agent-path)
         [app-context] (desc/describe-application {:args [org env app]})
         public-url (get-in app-context [:target :deployment-settings :http :inbound :public-url])]
     (when-not public-url
       (throw (e/app-not-found (str "No public URL found for " app))))
-    public-url))
+    (str public-url agent-path)))
 
 (defn a2a-init [{:keys [args] :as opts}]
   (let [raw-args (if (string? args) (str/split args #"\|") args)
