@@ -2,11 +2,15 @@
   (:require [yaac.core :refer [*org* *env*]]
             [yaac.describe :as desc]
             [yaac.error :as e]
+            [yaac.util :as util]
             [silvur.a2a :as a2a]
             [clojure.string :as str]
             [taoensso.timbre :as log]
             [jansi-clj.core :as jansi]
-            [reitit.core :as r]))
+            [reitit.core :as r])
+  (:import [org.jline.reader LineReader LineReader$Option LineReaderBuilder
+            EndOfFileException UserInterruptException Candidate Reference]
+           [org.jline.terminal TerminalBuilder]))
 
 (def ^:private session-file (str (System/getProperty "user.home") "/.yaac/a2a-session.edn"))
 
@@ -31,6 +35,7 @@
              ""
              "  init [org] [env] <app> [/path]   Connect to A2A agent (resolve public URL)"
              "  init <url>                        Connect to A2A agent (direct URL)"
+             "  console [org] [env] <app> [/path]  Interactive console"
              "  send <message...>                 Send message to agent"
              "  task <task-id>                    Get task status"
              "  cancel <task-id>                  Cancel a task"
@@ -91,51 +96,55 @@
   "Extract text from parts array. Handles both 'type' and 'kind' fields (v0.2/v0.3)."
   [parts]
   (->> parts
-       (map (fn [{:keys [type kind text data] :as part}]
-              (case (or kind type)
-                "text" text
-                "file" "[file]"
-                "data" (str data)
-                (str "[" (or kind type) "]"))))
+       (keep (fn [{:keys [type kind text data] :as part}]
+               (case (or kind type)
+                 "text" text
+                 "file" "[file]"
+                 "data" nil
+                 (str "[" (or kind type) "]"))))
        (str/join "\n")))
 
 (defn- format-send-result
   "Format a message/send result for display.
-   Result can be a Task (with :status, :artifacts) or a Message (with :parts, :role)."
-  [result]
-  (case (:kind result)
-    ;; Direct message response (v0.3)
-    "message"
-    (str (jansi/fg :green (:role result "agent")) "\n"
-         (extract-text-parts (:parts result)) "\n")
+   Result can be a Task (with :status, :artifacts) or a Message (with :parts, :role).
+   Options:
+     :show-artifact-name - show artifact name header (default true)"
+  ([result] (format-send-result result {}))
+  ([result {:keys [show-artifact-name] :or {show-artifact-name true}}]
+   (case (:kind result)
+     ;; Direct message response (v0.3)
+     "message"
+     (str (jansi/fg :green (:role result "agent")) "\n"
+          (extract-text-parts (:parts result)) "\n")
 
-    ;; Task response
-    "task"
-    (let [status (get-in result [:status :state] "unknown")
-          artifacts (:artifacts result)]
-      (str (jansi/a :bold "Task") " " (jansi/a :faint (:id result "?"))
-           " " (case status
-                 "completed" (jansi/fg :green status)
-                 "failed" (jansi/fg :red status)
-                 "working" (jansi/fg :yellow status)
-                 "input-required" (jansi/fg :cyan status)
-                 (jansi/a :faint status))
-           "\n"
-           (when (seq artifacts)
-             (str "\n"
-                  (str/join "\n"
-                            (map (fn [{:keys [name parts]}]
-                                   (str (when name (str (jansi/fg :cyan name) "\n"))
-                                        (extract-text-parts parts)))
-                                 artifacts))
-                  "\n"))
-           (when-let [msg (get-in result [:status :message])]
-             (str "\n" (jansi/a :faint msg) "\n"))))
+     ;; Task response
+     "task"
+     (let [status (get-in result [:status :state] "unknown")
+           artifacts (:artifacts result)]
+       (str (jansi/a :bold "Task") " " (jansi/a :faint (:id result "?"))
+            " " (case status
+                  "completed" (jansi/fg :green status)
+                  "failed" (jansi/fg :red status)
+                  "working" (jansi/fg :yellow status)
+                  "input-required" (jansi/fg :cyan status)
+                  (jansi/a :faint status))
+            "\n"
+            (when (seq artifacts)
+              (str "\n"
+                   (str/join "\n"
+                             (map (fn [{:keys [name parts]}]
+                                    (str (when (and show-artifact-name name)
+                                           (str (jansi/fg :cyan name) "\n"))
+                                         (extract-text-parts parts)))
+                                  artifacts))
+                   "\n"))
+            (when-let [msg (get-in result [:status :message])]
+              (str "\n" (jansi/a :faint msg) "\n"))))
 
-    ;; Fallback — try to extract parts or print as-is
-    (if (:parts result)
-      (str (extract-text-parts (:parts result)) "\n")
-      (str result "\n"))))
+     ;; Fallback — try to extract parts or print as-is
+     (if (:parts result)
+       (str (extract-text-parts (:parts result)) "\n")
+       (str result "\n")))))
 
 (defn a2a-send [{:keys [args] :as opts}]
   (let [raw-args (if (string? args) (str/split args #"\|") args)
@@ -214,6 +223,146 @@
 (defn a2a-clear [opts]
   (#'a2a/clear-session!)
   [{:message "Session cleared."}])
+
+;; --- Interactive Console ---
+
+(def ^:private slash-commands
+  [["/card"    "Show agent card"]
+   ["/session" "Show session info"]
+   ["/clear"   "Clear session and reconnect"]
+   ["/help"    "Show commands"]
+   ["/quit"    "Exit console"]])
+
+(def ^:private console-help
+  (str/join "\n"
+            (map (fn [[cmd desc]] (str "  " cmd (apply str (repeat (- 12 (count cmd)) " ")) desc))
+                 slash-commands)))
+
+(defn- make-slash-completer []
+  (reify org.jline.reader.Completer
+    (complete [_ _reader line candidates]
+      (let [word (or (.word line) "")]
+        (doseq [[cmd desc] slash-commands]
+          (when (str/starts-with? cmd word)
+            (.add candidates (Candidate. cmd cmd nil desc nil nil true))))))))
+
+(defn a2a-console [{:keys [args] :as opts}]
+  (binding [a2a/*session-file* session-file]
+    ;; If args provided and no session, init first
+    (when (and (seq args) (nil? (a2a/current-session)))
+      (let [raw-args (if (string? args) (str/split args #"\|") args)
+            url (if (and (= 1 (count raw-args))
+                         (str/starts-with? (first raw-args) "http"))
+                  (first raw-args)
+                  (resolve-a2a-url raw-args))]
+        (a2a/discover! url)))
+    ;; Verify session exists
+    (let [session (a2a/current-session)]
+      (when-not session
+        (throw (ex-info "No session. Run 'yaac a2a init <agent>' first, or: yaac a2a console <agent>" {})))
+      ;; Print banner
+      (let [card (:agent-card session)]
+        (println)
+        (println (str (jansi/fg :cyan (jansi/a :bold (:name card "Unknown Agent")))
+                      (when (:version card)
+                        (str " " (jansi/a :faint (str "v" (:version card)))))))
+        (println (jansi/a :faint (:url session)))
+        (println)))
+    ;; JLine REPL
+    (with-open [terminal (-> (TerminalBuilder/builder) (.system true) (.build))]
+      (let [reader (-> (LineReaderBuilder/builder)
+                       (.terminal terminal)
+                       (.completer (make-slash-completer))
+                       (.option LineReader$Option/AUTO_LIST true)
+                       (.option LineReader$Option/AUTO_MENU true)
+                       (.option LineReader$Option/LIST_ROWS_FIRST true)
+                       (.build))]
+        ;; Bind '/' to auto-trigger completion menu at line start (real terminals only)
+        (when-not (instance? org.jline.terminal.impl.DumbTerminal terminal)
+          (.put (.getWidgets reader) "slash-complete"
+                (reify org.jline.reader.Widget
+                  (apply [_]
+                    (let [buf (.getBuffer reader)]
+                      (.write buf (int \/))
+                      (when (and (= (.cursor buf) 1) (= (.length buf) 1))
+                        (.callWidget reader LineReader/MENU_COMPLETE))
+                      true))))
+          (let [^org.jline.keymap.KeyMap main-km (.get (.getKeyMaps reader) LineReader/MAIN)]
+            (.bind main-km (Reference. "slash-complete") (into-array CharSequence ["/"]))))
+        (loop []
+          (let [line (try
+                       (.readLine reader "> ")
+                       (catch EndOfFileException _ nil)
+                       (catch UserInterruptException _ :interrupted))]
+            (cond
+              ;; EOF (Ctrl+D)
+              (nil? line)
+              (println (jansi/a :faint "\nBye."))
+
+              ;; Ctrl+C — cancel current input
+              (= :interrupted line)
+              (do (println) (recur))
+
+              ;; Empty line
+              (str/blank? line)
+              (recur)
+
+              ;; Slash commands
+              (str/starts-with? line "/")
+              (let [cmd (str/lower-case (str/trim line))]
+                (case cmd
+                  ("/quit" "/exit" "/q")
+                  (println (jansi/a :faint "Bye."))
+
+                  "/card"
+                  (do (println (format-card-rich nil [(-> (a2a/current-session) :agent-card)] nil))
+                      (recur))
+
+                  "/session"
+                  (let [{:keys [url agent-card context-id]} (a2a/current-session)]
+                    (println (str "  Agent: " (:name agent-card "Unknown")))
+                    (println (str "  URL:   " url))
+                    (println (str "  Context: " (or context-id "-")))
+                    (println)
+                    (recur))
+
+                  "/clear"
+                  (do (#'a2a/clear-session!)
+                      (println (jansi/fg :yellow "Session cleared."))
+                      (when (seq args)
+                        (let [raw-args (if (string? args) (str/split args #"\|") args)
+                              url (if (and (= 1 (count raw-args))
+                                           (str/starts-with? (first raw-args) "http"))
+                                    (first raw-args)
+                                    (resolve-a2a-url raw-args))
+                              card (a2a/discover! url)]
+                          (println (str (jansi/fg :green "Reconnected: ") (:name card)))))
+                      (println)
+                      (recur))
+
+                  "/help"
+                  (do (println) (println console-help) (println)
+                      (recur))
+
+                  ;; Unknown slash command
+                  (do (println (str (jansi/fg :yellow "Unknown command: ") cmd))
+                      (println (jansi/a :faint "Type /help for available commands."))
+                      (recur))))
+
+              ;; Normal message → send to agent
+              :else
+              (do
+                (try
+                  (let [result (util/with-spin "Processing..."
+                                 (a2a/send-message! line))]
+                    (println)
+                    (print (format-send-result result {:show-artifact-name false}))
+                    (flush))
+                  (catch Exception e
+                    (println (str "\n" (jansi/fg :red "Error: ") (ex-message e)))))
+                (println)
+                (recur)))))))))
+
 
 (def route
   ["a2a" {:options options :usage usage}

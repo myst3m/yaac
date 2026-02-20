@@ -477,6 +477,19 @@
                            (timbre/set-config! prev-config)))]
               (System/exit exit)))))
 
+      ;; A2A Console
+      (and (= (first arguments) "a2a") (= (second arguments) "console"))
+      (try
+        (load-default-context!)
+        (yc/load-session!)
+        (binding [*org* (:organization default-context)
+                  *env* (:environment default-context)
+                  *no-cache* (:no-cache options)
+                  *deploy-target* (:deploy-target default-context)]
+          (yaac.a2a/a2a-console {:args (vec (drop 2 arguments))}))
+        (catch clojure.lang.ExceptionInfo e (print-explain e :debug (:debug options)))
+        (catch Exception e (print-error e :debug (:debug options))))
+
       ;; nREPL
       (= (first arguments) "nrepl")
       (try
