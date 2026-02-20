@@ -10,9 +10,12 @@
             [reitit.core :as r])
   (:import [org.jline.reader LineReader LineReader$Option LineReaderBuilder
             EndOfFileException UserInterruptException Candidate Reference]
-           [org.jline.terminal TerminalBuilder]))
+           [org.jline.reader.impl.history DefaultHistory]
+           [org.jline.terminal TerminalBuilder]
+           [java.nio.file Paths]))
 
 (def ^:private session-file (str (System/getProperty "user.home") "/.yaac/a2a-session.edn"))
+(def ^:private history-file (str (System/getProperty "user.home") "/.yaac/a2a-history"))
 
 (defn- with-session [handler]
   (fn [opts]
@@ -273,6 +276,7 @@
       (let [reader (-> (LineReaderBuilder/builder)
                        (.terminal terminal)
                        (.completer (make-slash-completer))
+                       (.variable LineReader/HISTORY_FILE (Paths/get history-file (into-array String [])))
                        (.option LineReader$Option/AUTO_LIST true)
                        (.option LineReader$Option/AUTO_MENU true)
                        (.option LineReader$Option/LIST_ROWS_FIRST true)
