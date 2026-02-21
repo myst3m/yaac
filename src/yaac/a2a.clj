@@ -149,13 +149,83 @@
        (str (extract-text-parts (:parts result)) "\n")
        (str result "\n")))))
 
+;; --- Streaming support ---
+
+(defn- streaming-capable?
+  "Check if current session's agent supports streaming."
+  []
+  (let [session (a2a/current-session)]
+    (get-in session [:agent-card :capabilities :streaming])))
+
+(defn- format-stream-event
+  "Format a single SSE event for real-time display."
+  [{:keys [event data]}]
+  (case event
+    "status-update"
+    (let [state (get-in data [:status :state])]
+      (case state
+        "working" (str (jansi/fg :yellow "⟳ ") (jansi/a :faint "working..."))
+        "completed" (str (jansi/fg :green "✓ ") "completed")
+        "input-required" (str (jansi/fg :cyan "? ") "input-required")
+        "failed" (str (jansi/fg :red "✗ ") "failed"
+                      (when-let [msg (get-in data [:status :message])]
+                        (str "\n" (extract-text-parts (:parts msg)))))
+        ;; other states
+        (str (jansi/a :faint (str "  [" state "]")))))
+
+    "artifact-update"
+    (let [artifact (:artifact data)
+          aname (:name artifact)
+          text (extract-text-parts (:parts artifact))
+          last-chunk (:lastChunk data)]
+      (case aname
+        ;; Step results: show just tool name, one line
+        "ステップ結果"
+        (let [;; text format: "description: {json...}"
+              brief (first (str/split text #":" 2))]
+          (str (jansi/fg :yellow "  ⟳ ") (jansi/a :faint (str/trim (or brief "...")))))
+        ;; Plan: show as-is (short)
+        "実行計画"
+        (str (jansi/fg :cyan "  ") (jansi/a :faint text))
+        ;; Final summary or question: show full text
+        (str (when aname (str (jansi/fg :cyan aname) "\n"))
+             text)))
+
+    "task"
+    (let [state (get-in data [:status :state])]
+      (str (jansi/a :bold "Task") " " (jansi/a :faint (or (:id data) "?"))
+           " " (jansi/a :faint state)))
+
+    ;; Unknown event
+    nil))
+
+(defn- send-streaming!
+  "Send message via streaming and display events in real-time.
+   Returns the final result text for console display."
+  [text]
+  (let [last-summary (atom nil)]
+    (a2a/send-message-stream! text
+      (fn [{:keys [event data] :as evt}]
+        (when-let [formatted (format-stream-event evt)]
+          (println formatted)
+          (flush))
+        ;; Track the last artifact text as summary
+        (when (= event "artifact-update")
+          (reset! last-summary (extract-text-parts (get-in data [:artifact :parts]))))))
+    @last-summary))
+
 (defn a2a-send [{:keys [args] :as opts}]
   (let [raw-args (if (string? args) (str/split args #"\|") args)
         text (str/join " " raw-args)]
     (when (str/blank? text)
       (throw (e/invalid-arguments "Message required" {:args args})))
-    (let [result (a2a/send-message! text)]
-      (format-send-result result))))
+    (if (streaming-capable?)
+      (do (println)
+          (send-streaming! text)
+          (println)
+          "")
+      (let [result (a2a/send-message! text)]
+        (format-send-result result)))))
 
 (defn a2a-get-task [{:keys [args] :as opts}]
   (let [raw-args (if (string? args) (str/split args #"\|") args)
@@ -292,7 +362,15 @@
                         (.callWidget reader LineReader/MENU_COMPLETE))
                       true))))
           (let [^org.jline.keymap.KeyMap main-km (.get (.getKeyMaps reader) LineReader/MAIN)]
-            (.bind main-km (Reference. "slash-complete") (into-array CharSequence ["/"]))))
+            (.bind main-km (Reference. "slash-complete") (into-array CharSequence ["/"])))
+          ;; In menu-complete mode, Enter should accept selection AND submit the line
+          (.put (.getWidgets reader) "menu-accept-line"
+                (reify org.jline.reader.Widget
+                  (apply [_]
+                    (.callWidget reader LineReader/ACCEPT_LINE)
+                    true)))
+          (let [^org.jline.keymap.KeyMap menu-km (.get (.getKeyMaps reader) "menu")]
+            (.bind menu-km (Reference. "menu-accept-line") (into-array CharSequence ["\r" "\n"]))))
         (loop []
           (let [line (try
                        (.readLine reader "> ")
@@ -357,13 +435,15 @@
               :else
               (do
                 (try
-                  (let [result (util/with-spin "Processing..."
-                                 (a2a/send-message! line))]
-                    (println)
-                    (print (format-send-result result {:show-artifact-name false}))
-                    (flush))
+                  (println)
+                  (if (streaming-capable?)
+                    (send-streaming! line)
+                    (let [result (util/with-spin "Processing..."
+                                   (a2a/send-message! line))]
+                      (print (format-send-result result {:show-artifact-name false}))
+                      (flush)))
                   (catch Exception e
-                    (println (str "\n" (jansi/fg :red "Error: ") (ex-message e)))))
+                    (println (str (jansi/fg :red "Error: ") (ex-message e)))))
                 (println)
                 (recur)))))))))
 
