@@ -21,6 +21,7 @@
                                org->id env->id app->id target->id
                                org->name env->name load-session! -get-deployed-applications
                                -enrich-application -get-client-provider
+                               gw->id -get-managed-gateway-detail
                                gen-url] :as yc]
             [yaac.error :as e]
             [clojure.string :as str]
@@ -49,6 +50,7 @@
              "  - env [org] [env]               Describe environment"
              "  - app [org] [env] <app>         Describe application"
              "  - asset -g <group> -a <asset>   Describe asset"
+             "  - policy <group> <asset> [-v V] Describe policy schema"
              "  - connected-app <name|id>       Show connected app scopes"
              ""])
           ["Example:"
@@ -136,6 +138,28 @@
           (parse-response)
           :body))))
 
+(defn describe-policy [{:keys [args version]}]
+  (let [[group asset] args]
+    (when-not (and group asset)
+      (throw (e/invalid-arguments "Group and policy asset are required" {:args args})))
+    (let [group-id (org->id group)
+          asset-info (-> @(http/get (format (gen-url "/exchange/api/v2/assets/%s/%s/asset") group-id asset)
+                                   {:headers (default-headers)})
+                        (parse-response)
+                        :body)
+          _ (when-not asset-info
+              (throw (e/no-item "Policy not found" {:group group :asset asset})))
+          schema-url (->> (:files asset-info)
+                          (filter #(and (= (:classifier %) "schema")
+                                        (= (:packaging %) "json")))
+                          first
+                          :external-link)]
+      (if schema-url
+        (-> @(http/get schema-url {})
+            (parse-response)
+            :body)
+        (throw (e/no-item "No schema found for policy" {:group group :asset asset}))))))
+
 (defn describe-api-instance [{:keys [args]}]
   (let [[api env org] (reverse args) ;; app has to be specified
         org (or org *org*)
@@ -184,6 +208,19 @@
     (assoc env-info :extra {:apps (count apps)
                             :total-v-cores total-vcores
                             :total-replicas total-replicas})))
+
+(defn describe-gateway [{:keys [args]}]
+  (let [[gw env org] (reverse args)
+        org (or org *org*)
+        env (or env *env*)]
+    (when-not (and org env gw)
+      (throw (e/invalid-arguments "Org, Env and Gateway name need to be specified" {:args args})))
+    (let [org-id (org->id org)
+          env-id (env->id org env)
+          gw-id (gw->id org env gw)]
+      (when-not gw-id
+        (throw (e/no-item "Gateway not found" {:name gw})))
+      (-get-managed-gateway-detail org-id env-id gw-id))))
 
 (defn describe-client-provider [{:keys [args]
                                   [cp-name-or-id] :args}]
@@ -316,6 +353,34 @@
      ["|capp" {:help true}]
      ["|capp|{*args}" {:fields [:scope :org :env]
                        :handler describe-connected-app}]
+
+     ;; Flex Gateways
+     ["|gw" {:help true}]
+     ["|gw|{*args}" {:fields [:name [:id :fmt short-uuid] :status
+                              :target-name :target-type
+                              :size :runtime-version :release-channel
+                              [:configuration :ingress :public-url]
+                              [:configuration :ingress :internal-url]
+                              [:configuration :ingress :last-mile-security]
+                              [:configuration :logging :level :as "log-level"]
+                              :api-limit]
+                      :handler describe-gateway}]
+     ["|gateway" {:help true}]
+     ["|gateway|{*args}" {:fields [:name [:id :fmt short-uuid] :status
+                                   :target-name :target-type
+                                   :size :runtime-version :release-channel
+                                   [:configuration :ingress :public-url]
+                                   [:configuration :ingress :internal-url]
+                                   [:configuration :ingress :last-mile-security]
+                                   [:configuration :logging :level :as "log-level"]
+                                   :api-limit]
+                           :handler describe-gateway}]
+
+     ;; Policies
+     ["|policy" {:help true}]
+     ["|policy|{*args}" {:handler describe-policy :output-format :json}]
+     ["|pol" {:help true}]
+     ["|pol|{*args}" {:handler describe-policy :output-format :json}]
 
      ;; Client Providers
      ["|cp" {:help true}]

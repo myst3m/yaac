@@ -426,8 +426,10 @@
 
 ;; No throw exception for get functions so as to query OOB assets
 (defn org->id* [id-or-name]
-  (let [orgs (-get-organizations)
-        pairs (map (juxt :id :name) orgs)]
+  (if (= id-or-name "global")
+    mule-business-group-id
+    (let [orgs (-get-organizations)
+          pairs (map (juxt :id :name) orgs)]
     (or (ffirst (filter #((set %) id-or-name) pairs))
         ;; prefix match fallback
         (let [matches (filter #(prefix-match? id-or-name (first %)) pairs)]
@@ -435,7 +437,7 @@
             (ffirst matches)))
         ;; UUID形式ならIDとしてそのまま返す、それ以外はnil（org->idでthrowさせる）
         (when (re-matches #"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}" (str id-or-name))
-          id-or-name))))
+          id-or-name)))))
 
 (defn org->id [id-or-name]
   (or (org->id* id-or-name)
@@ -794,6 +796,18 @@
            :body
            :content
            (mapv #(assoc % :source "standalone" :extra {:org org :env env}))))))
+
+(defn -get-managed-gateway-detail
+  "Get detailed info for a single managed Flex Gateway"
+  [org-id env-id gw-id]
+  (try
+    (-> @(http/get (format (gen-url "/gatewaymanager/api/v1/organizations/%s/environments/%s/gateways/%s") org-id env-id gw-id)
+                  {:headers (default-headers)})
+        (parse-response)
+        :body)
+    (catch Exception e
+      (log/debug "Failed to get gateway detail" gw-id (ex-message e))
+      nil)))
 
 (defn -get-managed-gateways
   "Get managed Flex Gateways from Gateway Manager API (CloudHub 2.0)"
