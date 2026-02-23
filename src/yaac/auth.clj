@@ -77,18 +77,21 @@
 (defn- callback-app [token-url client-id client-secret redirect-uri scope pipe]
   (rh/ring-handler
    (rh/router [["/oauth2/callback" {:get (fn [{:keys [params]}]
-                                           (let [{:strs [code state]} params]
-                                             (-> @(http/post token-url
-                                                            {:form-params {:client_id client-id
-                                                                           :scope scope
-                                                                           :code code
-                                                                           :redirect_uri redirect-uri
-                                                                           :grant_type "authorization_code"
-                                                                           :client_secret client-secret}})
-                                                 :body
-                                                 (json->edn)
-                                                 (as-> x (do (>!! pipe x) x)
-                                                   (assoc {:status 200} :body (edn->json :snake x))))))}]])
+                                           (let [{:strs [code state]} params
+                                                 resp @(http/post token-url
+                                                                  {:form-params {:client_id client-id
+                                                                                 :scope scope
+                                                                                 :code code
+                                                                                 :redirect_uri redirect-uri
+                                                                                 :grant_type "authorization_code"
+                                                                                 :client_secret client-secret}})
+                                                 body (:body resp)
+                                                 parsed (json->edn body)]
+                                             (>!! pipe (if (map? parsed) parsed {:error body}))
+                                             {:status 200
+                                              :body (if (map? parsed)
+                                                      (edn->json :snake parsed)
+                                                      (str body))}))}]])
    {:executor reitit.interceptor.sieppari/executor
     :interceptors [(reitit.http.interceptors.parameters/parameters-interceptor)]}))
 
@@ -101,7 +104,7 @@
             (throw (e/invalid-arguments
                     "Specify issuer=<url>, -p <preset>, or authorize-url=<url> token-url=<url>"
                     {:opts (dissoc opts :args :summary)})))
-        port (or (first port) 9180)
+        port (let [p (or (first port) 9180)] (if (string? p) (parse-long p) p))
         client-id (or (first client-id) (and con (.readLine con "%s" (into-array ["client-id: "]))))
         client-secret (or (first client-secret) (and con (.readLine con "%s" (into-array ["client-secret: "]))))
         redirect-uri (or (first redirect-uri) (format "http://localhost:%d/oauth2/callback" port))
@@ -132,8 +135,10 @@
                              {:host "0.0.0.0" :port port})
           result (<!! pipe)]
       (server)
-      (yc/add-extra-fields [result]
-                           :issuer (or (first (:issuer opts)) preset-name)))))
+      (if (:error result)
+        (throw (e/error "Token exchange failed" {:body (:error result)}))
+        (yc/add-extra-fields [result]
+                             :issuer (or (first (:issuer opts)) preset-name))))))
 
 ;; --- Client Credentials Flow ---
 
