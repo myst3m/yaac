@@ -229,6 +229,7 @@
                :parse-fn parse-long]])
 
 (def result-fields [[:extra :issuer]
+                    :access-token
                     :token-type
                     :expires-in
                     :scope])
