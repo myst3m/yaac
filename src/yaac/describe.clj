@@ -142,13 +142,18 @@
   (let [[group asset] args]
     (when-not (and group asset)
       (throw (e/invalid-arguments "Group and policy asset are required" {:args args})))
-    (let [group-id (org->id group)
-          asset-info (-> @(http/get (format (gen-url "/exchange/api/v2/assets/%s/%s/asset") group-id asset)
-                                   {:headers (default-headers)})
+    (let [group-id (if (#{"MuleSoft" "mulesoft" "global"} group)
+                     yc/mule-business-group-id
+                     (org->id group))
+          ;; Use version-specific URL if -v is provided, otherwise latest
+          url (if version
+                (format (gen-url "/exchange/api/v2/assets/%s/%s/%s") group-id asset version)
+                (format (gen-url "/exchange/api/v2/assets/%s/%s/asset") group-id asset))
+          asset-info (-> @(http/get url {:headers (default-headers)})
                         (parse-response)
                         :body)
           _ (when-not asset-info
-              (throw (e/no-item "Policy not found" {:group group :asset asset})))
+              (throw (e/no-item "Policy not found" {:group group :asset asset :version version})))
           schema-url (->> (:files asset-info)
                           (filter #(and (= (:classifier %) "schema")
                                         (= (:packaging %) "json")))
@@ -158,7 +163,7 @@
         (-> @(http/get schema-url {})
             (parse-response)
             :body)
-        (throw (e/no-item "No schema found for policy" {:group group :asset asset}))))))
+        (throw (e/no-item "No schema found for policy" {:group group :asset asset :version version}))))))
 
 (defn describe-api-instance [{:keys [args]}]
   (let [[api env org] (reverse args) ;; app has to be specified

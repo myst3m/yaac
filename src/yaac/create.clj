@@ -134,6 +134,8 @@
               [nil "--forward-logs" "Forward logs to Anypoint Monitoring"]
               [nil "--upstream-timeout MS" "Upstream response timeout in ms"]
               [nil "--connection-timeout MS" "Connection idle timeout in ms"]
+              [nil "--config FILE" "JSON config file for policy configurationData"]
+              [nil "--outbound" "Force outbound policy endpoint"]
               ;; Alert options (for both API and Application alerts)
               [nil "--api API" "API name or ID (for API alerts)"]
               [nil "--app APP" "Application ID (for application alerts)"]
@@ -293,35 +295,41 @@
             api-result)))))))
 
 
-(defn- gen-policy-config [policy {:keys [ip-expression ips
+(defn- gen-policy-config [policy {:keys [config ip-expression ips
                                          delay-attempts maximum-requests queuing-limit expose-headers time-period-in-milliseconds delay-time-in-millis
                                          maximum-requests time-period-in-milliseconds
                                          ;; Circuit breaker options
                                          max-connections max-pending-requests max-requests max-retries max-connection-pools
                                          ]}]
-  (condp = (keyword policy)
-    :ip-allowlist {:ip-expression (or (first ip-expression) "#[attributes.headers['x-forwarded-for']]"),
-                   :ips (or ips ["0.0.0.0/0"])}
-    :spike-control {:delay-attempts (or (some-> delay-attempts first parse-long) 1)
-                    :maximum-requests (or (some-> maximum-requests first parse-long) 1)
-                    :queuing-limit (or (some-> queuing-limit first parse-long) 5)
-                    :expose-headers (or (= (first expose-headers) "true") false)
-                    :time-period-in-milliseconds (or (some-> time-period-in-milliseconds first parse-long) 1000)
-                    :delay-time-in-millis (or (some-> delay-time-in-millis first parse-long) 1000)}
-    :rate-limiting {:rateLimits [{:maximumRequests (or (some-> maximum-requests first parse-long) 10)
-                                   :timePeriodInMilliseconds (or (some-> time-period-in-milliseconds first parse-long) 60000)}]
-                    :clusterizable true
-                    :exposeHeaders false}
-    :circuit-breaker {:thresholds (cond-> {}
-                                    max-connections (assoc :maxConnections (some-> max-connections first parse-long))
-                                    max-pending-requests (assoc :maxPendingRequests (some-> max-pending-requests first parse-long))
-                                    max-requests (assoc :maxRequests (some-> max-requests first parse-long))
-                                    max-retries (assoc :maxRetries (some-> max-retries first parse-long))
-                                    max-connection-pools (assoc :maxConnectionPools (some-> max-connection-pools first parse-long)))}
-    (throw (e/not-implemented "Given policy is not implemented" {:name policy}))))
+  (if config
+    ;; --config FILE: read JSON file as configurationData (returns raw map with original camelCase keys)
+    (json/read-value (slurp config))
+    (condp = (keyword policy)
+      :ip-allowlist {:ip-expression (or (first ip-expression) "#[attributes.headers['x-forwarded-for']]"),
+                     :ips (or ips ["0.0.0.0/0"])}
+      :spike-control {:delay-attempts (or (some-> delay-attempts first parse-long) 1)
+                      :maximum-requests (or (some-> maximum-requests first parse-long) 1)
+                      :queuing-limit (or (some-> queuing-limit first parse-long) 5)
+                      :expose-headers (or (= (first expose-headers) "true") false)
+                      :time-period-in-milliseconds (or (some-> time-period-in-milliseconds first parse-long) 1000)
+                      :delay-time-in-millis (or (some-> delay-time-in-millis first parse-long) 1000)}
+      :rate-limiting {:rateLimits [{:maximumRequests (or (some-> maximum-requests first parse-long) 10)
+                                     :timePeriodInMilliseconds (or (some-> time-period-in-milliseconds first parse-long) 60000)}]
+                      :clusterizable true
+                      :exposeHeaders false}
+      :circuit-breaker {:thresholds (cond-> {}
+                                      max-connections (assoc :maxConnections (some-> max-connections first parse-long))
+                                      max-pending-requests (assoc :maxPendingRequests (some-> max-pending-requests first parse-long))
+                                      max-requests (assoc :maxRequests (some-> max-requests first parse-long))
+                                      max-retries (assoc :maxRetries (some-> max-retries first parse-long))
+                                      max-connection-pools (assoc :maxConnectionPools (some-> max-connection-pools first parse-long)))}
+      (throw (e/not-implemented (str "Policy '" policy "' requires --config FILE. Use 'yaac describe policy MuleSoft " policy "' to check the schema.") {:name policy})))))
 
 ;; Outbound policies require different endpoint and upstream IDs
-(def outbound-policies #{"circuit-breaker"})
+(def outbound-policies #{"circuit-breaker"
+                          "credential-injection-oauth2-obo"
+                          "credential-injection-basic-auth"
+                          "credential-injection-api-key"})
 
 (defn- outbound-policy? [asset-id]
   (contains? outbound-policies asset-id))
@@ -334,6 +342,8 @@
         [group-id asset-id version] (if (str/includes? policy "/")
                                       (str/split policy #"/")
                                       [nil policy nil])
+        ;; --version override
+        version (or (:version opts) version)
         ;; If full spec provided, use it directly; otherwise search
         policy-info (if (and group-id asset-id version)
                       {:group-id group-id :asset-id asset-id :version version}
@@ -343,9 +353,12 @@
                         (cond
                           (= 0 (count policies)) (throw (e/no-item (str "No policy found: " policy)))
                           (< 1 (count policies)) (throw (e/multiple-policies "Multiple policy found" {:extra policies}))
-                          :else (let [{:keys [asset-id version group-id]} (first policies)]
-                                  {:group-id group-id :asset-id asset-id :version version}))))
-        is-outbound (outbound-policy? (:asset-id policy-info))]
+                          :else (let [{:keys [asset-id group-id]} (first policies)
+                                      resolved-version (or version (:version (first policies)))]
+                                  {:group-id group-id :asset-id asset-id :version resolved-version}))))
+        is-outbound (or (:outbound opts) (outbound-policy? (:asset-id policy-info)))
+        config-data (gen-policy-config (:asset-id policy-info) opts)
+        use-raw-json (:config opts)]
 
     (if is-outbound
       ;; Outbound policy - use xapi endpoint with upstream IDs
@@ -355,23 +368,39 @@
           (throw (e/invalid-arguments "No upstreams found for API. Outbound policies require at least one upstream." {:api api})))
         (-> @(http/post (format (gen-url "/apimanager/xapi/v1/organizations/%s/environments/%s/apis/%s/policies/outbound-policies") org-id env-id api-id)
                        {:headers (default-headers)
-                        :body (edn->json :camel
-                                         {:configuration-data (gen-policy-config (:asset-id policy-info) opts)
-                                          :asset-id (:asset-id policy-info)
-                                          :asset-version (:version policy-info)
-                                          :group-id (:group-id policy-info)
-                                          :upstream-ids upstream-ids})})
+                        :body (if use-raw-json
+                                ;; Raw JSON body to preserve camelCase keys from config file
+                                (json/write-value-as-string
+                                 {"configurationData" config-data
+                                  "assetId" (:asset-id policy-info)
+                                  "assetVersion" (:version policy-info)
+                                  "groupId" (:group-id policy-info)
+                                  "upstreamIds" upstream-ids})
+                                (edn->json :camel
+                                           {:configuration-data config-data
+                                            :asset-id (:asset-id policy-info)
+                                            :asset-version (:version policy-info)
+                                            :group-id (:group-id policy-info)
+                                            :upstream-ids upstream-ids}))})
             (parse-response)
             :body))
       ;; Inbound policy - use standard endpoint
       (-> @(http/post (format (gen-url "/apimanager/api/v1/organizations/%s/environments/%s/apis/%s/policies") org-id env-id api-id)
                      {:headers (default-headers)
-                      :body (edn->json :camel
-                                       {:configuration-data (gen-policy-config (:asset-id policy-info) opts)
-                                        :pointcut-data nil
-                                        :asset-id (:asset-id policy-info)
-                                        :asset-version (:version policy-info)
-                                        :group-id (:group-id policy-info)})})
+                      :body (if use-raw-json
+                              ;; Raw JSON body to preserve camelCase keys from config file
+                              (json/write-value-as-string
+                               {"configurationData" config-data
+                                "pointcutData" nil
+                                "assetId" (:asset-id policy-info)
+                                "assetVersion" (:version policy-info)
+                                "groupId" (:group-id policy-info)})
+                              (edn->json :camel
+                                         {:configuration-data config-data
+                                          :pointcut-data nil
+                                          :asset-id (:asset-id policy-info)
+                                          :asset-version (:version policy-info)
+                                          :group-id (:group-id policy-info)}))})
           (parse-response)
           :body))))
 

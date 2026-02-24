@@ -1782,10 +1782,19 @@
 (defn get-api-policies [{:keys [args types]
                          [org env api] :args}]
   (let [[api env org] (reverse args)]
-    (->> (on-threads *no-multi-thread*
-           (-get-api-policies org env api)
-           (-get-automated-api-policies org env))
-         (filter #((set (or (seq types) ["automated" "regular"])) (-> % :extra :type))))))
+    (if (and api env)
+      ;; Existing: get policies applied to an API instance
+      (->> (on-threads *no-multi-thread*
+             (-get-api-policies org env api)
+             (-get-automated-api-policies org env))
+           (filter #((set (or (seq types) ["automated" "regular"])) (-> % :extra :type))))
+      ;; Exchange search: args 0-1 (search term optional)
+      (let [term (first args)
+            assets (get-assets (cond-> {:types ["policy"] :args [mule-business-group-id] :all true}
+                                 term (assoc :search-term [term])))]
+        (map #(assoc % :extra {:asset-id (:asset-id %)
+                                :version (:version %)
+                                :group-id (short-uuid (:group-id %))}) assets)))))
 
 ;; Upstream API functions
 (defn -get-api-upstreams
@@ -2345,7 +2354,9 @@
     ["connection"]
     ["connection|{*args}"]]
 
-   ["|" {:handler get-api-policies}
+   ["|" {:handler get-api-policies
+          :fields [[:extra :asset-id] [:extra :version] [:extra :group-id]
+                   [:extra :id :fmt short-uuid] [:extra :type] [:extra :order]]}
     ["policy"]
     ["policy|{*args}"]
     ["pol"]

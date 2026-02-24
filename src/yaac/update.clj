@@ -90,6 +90,7 @@
              "    - --upstream-uri                      : Upstream URI for API instance"
              "  policy"
              "    - --jwks-url                          : JWKS URL for JWT validation policy"
+             "    - --config FILE                       : JSON config file for full configurationData replace"
              ""])
           ["Example:"
            ""
@@ -136,7 +137,9 @@
                :id :upstream-uri]
               ;; API policy options
               [nil "--jwks-url URL" "JWKS URL for JWT validation policy"
-               :id :jwks-url]])
+               :id :jwks-url]
+              [nil "--config FILE" "JSON config file for policy configurationData"
+               :id :config]])
 
 
 (defn update-asset-config [{:keys [args group asset version labels]
@@ -438,19 +441,23 @@
 ;; API Policy update
 (defn update-api-policy
   "Update API policy configuration by policy name (asset-id)"
-  [{:keys [args jwks-url] :as opts}]
+  [{:keys [args jwks-url config] :as opts}]
   (let [[policy-name api env org] (reverse args)
         org (or org *org*)
         env (or env *env*)]
     (when-not (and org env api policy-name)
       (throw (e/invalid-arguments "Org, Env, API and policy-name need to be specified" {:args args})))
-    (when-not jwks-url
-      (throw (e/invalid-arguments "At least one policy option (e.g. --jwks-url) is required" opts)))
+    (when-not (or jwks-url config)
+      (throw (e/invalid-arguments "At least one policy option (--jwks-url or --config FILE) is required" opts)))
     (if-let [policy-id (policy-name->id org env api policy-name)]
-      (let [current-policy (-get-api-policy org env api policy-id)
-            current-config (:configuration-data current-policy)
-            updated-config (cond-> current-config
-                             jwks-url (assoc :jwks-url jwks-url))]
+      (let [updated-config (if config
+                             ;; --config FILE: full replace with JSON file contents
+                             (json/read-value (slurp config))
+                             ;; Legacy: differential update
+                             (let [current-policy (-get-api-policy org env api policy-id)
+                                   current-config (:configuration-data current-policy)]
+                               (cond-> current-config
+                                 jwks-url (assoc :jwks-url jwks-url))))]
         (-patch-api-policy org env api policy-id updated-config)
         [{:extra {:api-id api
                   :policy-name policy-name
