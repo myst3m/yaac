@@ -208,10 +208,35 @@
                 (when (and (seq text) (not (seq artifacts)))
                   (str "\n" text "\n"))))))
 
-     ;; Fallback — try to extract parts or print as-is
-     (if (:parts result)
+     ;; Fallback — try to extract artifacts or parts
+     (cond
+       (seq (:artifacts result))
+       (str/join "\n"
+                 (map (fn [{:keys [name parts]}]
+                        (str (when name (str (jansi/fg :cyan name) "\n"))
+                             (extract-text-parts parts)))
+                      (:artifacts result)))
+       (:parts result)
        (str (extract-text-parts (:parts result)) "\n")
+       :else
        (str result "\n")))))
+
+(defn- format-a2a-error
+  "Format an A2A exception for display, including artifacts from error data if available."
+  [^Exception e]
+  (let [data (ex-data e)
+        a2a-data (:a2a-data data)
+        artifacts (or (:artifacts a2a-data)
+                      (when (map? data) (:artifacts data)))]
+    (str (jansi/fg :red "Error: ") (ex-message e)
+         (when (seq artifacts)
+           (str "\n\n"
+                (str/join "\n"
+                          (map (fn [{:keys [name parts]}]
+                                 (str (when name (str (jansi/fg :cyan name) "\n"))
+                                      (extract-text-parts parts)))
+                               artifacts))
+                "\n")))))
 
 ;; --- Streaming support ---
 
@@ -283,13 +308,16 @@
         text (str/join " " raw-args)]
     (when (str/blank? text)
       (throw (e/invalid-arguments "Message required" {:args args})))
-    (if (streaming-capable?)
-      (do (println)
-          (send-streaming! text)
-          (println)
-          "")
-      (let [result (a2a/send-message! text)]
-        (format-send-result result)))))
+    (try
+      (if (streaming-capable?)
+        (do (println)
+            (send-streaming! text)
+            (println)
+            "")
+        (let [result (a2a/send-message! text)]
+          (format-send-result result)))
+      (catch Exception e
+        (format-a2a-error e)))))
 
 (defn a2a-get-task [{:keys [args] :as opts}]
   (let [raw-args (if (string? args) (str/split args #"\|") args)
@@ -579,7 +607,7 @@
                       (print (format-send-result result {:show-artifact-name false}))
                       (flush)))
                   (catch Exception e
-                    (println (str (jansi/fg :red "Error: ") (ex-message e)))))
+                    (println (format-a2a-error e))))
                 (println)
                 (recur))))))))))
 
