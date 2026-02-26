@@ -19,7 +19,7 @@
         com.github.seancorfield/next.jdbc {:mvn/version "1.3.939"}
         com.mysql/mysql-connector-j {:mvn/version "8.4.0"}
         io.gitlab.myst3m/silvur {:git/url "https://gitlab.com/myst3m/silvur.git"
-                                  :sha "7a73946452bc8ff75bbe8fed221b686874451083"
+                                  :sha "d8585a87c6df7325a665ad82d8bc5e7c1cab754a"
                                   :exclusions [com.cognitect/transit-clj
                                                buddy/buddy
                                                twitter-api/twitter-api]}
