@@ -96,8 +96,8 @@
   "Render a block of table lines with aligned columns."
   [lines]
   (let [rows (mapv parse-table-row lines)
-        data-rows (remove (fn [r] (every? #(re-matches #"-{2,}|:-+:?|-+:" %) r)) rows)
-        col-count (apply max (map count data-rows))
+        data-rows (vec (remove (fn [r] (every? #(re-matches #"-{2,}|:-+:?|-+:" %) r)) rows))
+        col-count (if (empty? data-rows) 1 (apply max (map count data-rows)))
         ;; Calculate max width per column
         widths (reduce (fn [ws row]
                          (mapv (fn [i]
@@ -158,13 +158,17 @@
   "Convert Markdown text to ANSI-escaped text for terminal display."
   [text]
   (when text
-    (let [[protected blocks] (protect-code-blocks text)]
-      (-> protected
-          render-headings
-          render-tables
-          render-hr
-          render-bullets
-          render-bold
-          render-italic
-          render-inline-code
-          (restore-code-blocks blocks)))))
+    (try
+      (let [[protected blocks] (protect-code-blocks text)]
+        (-> protected
+            render-headings
+            render-tables
+            render-hr
+            render-bullets
+            render-bold
+            render-italic
+            render-inline-code
+            (restore-code-blocks blocks)))
+      (catch Exception _
+        ;; Fallback: return raw text if rendering fails
+        text))))
