@@ -133,7 +133,7 @@
             :artifactId asset
             :version version
             :packaging "jar"}
-      :integrations {:services {:objectStoreV2 {:enabled false}}}
+      :integrations {:services {:objectStoreV2 {:enabled (boolean (:object-store-v2 opts))}}}
       :assets []
       :desiredState "STARTED"
       :configuration {:mule.agent.logging.service {:scopeLoggingConfigurations []}
@@ -235,7 +235,8 @@
                                               instance-type
                                               clustered
                                               node-port
-                                              target-port]
+                                              target-port
+                                              object-store-v2]
                                        ;; v-cores should be removed for New PP
                                        [cluster org env app-or-prefix] :args
                                        :or {replicas ["1"]
@@ -290,7 +291,7 @@
                                                                        :artifactId asset-name
                                                                        :version version
                                                                        :packaging "jar"}
-                                                                 :integrations {:services {:objectStoreV2 {:enabled false}}}
+                                                                 :integrations {:services {:objectStoreV2 {:enabled (boolean (:object-store-v2 opts))}}}
                                                                  :assets []
                                                                  :desiredState "STARTED"
                                                                  :configuration {:mule.agent.logging.service {:scopeLoggingConfigurations []}

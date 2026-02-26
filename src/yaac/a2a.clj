@@ -202,7 +202,11 @@
                                   artifacts))
                    "\n"))
             (when-let [msg (get-in result [:status :message])]
-              (str "\n" (jansi/a :faint msg) "\n"))))
+              (let [text (if (map? msg)
+                           (extract-text-parts (:parts msg))
+                           (str msg))]
+                (when (and (seq text) (not (seq artifacts)))
+                  (str "\n" text "\n"))))))
 
      ;; Fallback — try to extract parts or print as-is
      (if (:parts result)
