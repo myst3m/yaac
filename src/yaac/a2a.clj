@@ -227,8 +227,11 @@
   (let [data (ex-data e)
         a2a-data (:a2a-data data)
         artifacts (or (:artifacts a2a-data)
-                      (when (map? data) (:artifacts data)))]
-    (str (jansi/fg :red "Error: ") (ex-message e)
+                      (when (map? data) (:artifacts data)))
+        msg (or (ex-message e)
+                (when-let [cause (.getCause e)] (ex-message cause))
+                (.getSimpleName (class e)))]
+    (str (jansi/fg :red "Error: ") msg
          (when (seq artifacts)
            (str "\n\n"
                 (str/join "\n"
