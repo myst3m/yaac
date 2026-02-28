@@ -1782,7 +1782,7 @@
 (defn get-api-policies [{:keys [args types]
                          [org env api] :args}]
   (let [[api env org] (reverse args)]
-    (if (and api env)
+    (if api
       ;; Existing: get policies applied to an API instance
       (->> (on-threads *no-multi-thread*
              (-get-api-policies org env api)

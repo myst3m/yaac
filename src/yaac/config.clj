@@ -119,8 +119,7 @@
   (for [op ["configure" "config" "cfg"]]
     [op {:options  options
          :usage    usage
-         :no-token true
-         :fields   [:status]}
+         :no-token true}
      ["" {:help true}]
      ["|-h" {:help true}]
      ["|ctx" {:fields  [:organization :environment :deploy-target]

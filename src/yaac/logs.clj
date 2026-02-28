@@ -44,7 +44,7 @@
       true (yc/parse-response)
       true :body
       true (yc/add-extra-fields :timestamp (fn [{:keys [timestamp]}]
-                                             (binding [*precision* (chrono-unit :milli)]
+                                             (binding [*precision* (chrono-unit :millis)]
                                                (str (datetime timestamp))))
                                 :message (fn [{:keys [message]}]
                                            (pr-str message)))

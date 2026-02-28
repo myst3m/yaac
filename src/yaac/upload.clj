@@ -226,20 +226,22 @@
              [0x6f 0x70 0x65 0x6e 0x61 0x70 0x69 0x3a & _] :OAS))))
 
 
-(defn upload-asset [{:keys [group asset version api-version asset-type]
+(defn upload-asset [{:keys [group asset version api-version asset-type args]
                     :or {api-version "v1"}
-                     [file-path] :args
                     :as opts}]
-  (log/debug "File: " file-path)
-  (if-not (.exists (io/file file-path))
-    (throw (e/invalid-arguments "No file specified" {:file file-path}))
-    (let [file-type (identify-file-type file-path)]
-      (util/spin (str "Uploading " (or asset file-path) "..."))
-      (case file-type
-        :JAR (upload-jar opts)
-        :RAML (upload-raml opts)
-        :OAS (upload-oas opts)
-        :else (throw (e/not-supported-file-type "No JAR/ZIP, RAML or OAS" {:file file-path}))))))
+  (let [file-path (first (filter #(.exists (io/file %)) args))
+        rest-args (vec (remove #{file-path} args))
+        opts (assoc opts :args (into [file-path] rest-args))]
+    (log/debug "File: " file-path)
+    (if-not file-path
+      (throw (e/invalid-arguments "No file specified" {:file (first args)}))
+      (let [file-type (identify-file-type file-path)]
+        (util/spin (str "Uploading " (or asset file-path) "..."))
+        (case file-type
+          :JAR (upload-jar opts)
+          :RAML (upload-raml opts)
+          :OAS (upload-oas opts)
+          :else (throw (e/not-supported-file-type "No JAR/ZIP, RAML or OAS" {:file file-path})))))))
 
 (def route
   (for [op ["upload" "up"]]
