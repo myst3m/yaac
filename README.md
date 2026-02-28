@@ -51,7 +51,9 @@ yaac deploy app my-app target=hy:leibniz
 | `build` | - | Run Maven goals with embedded Maven | [doc/build.md](doc/build.md) |
 | `logs` | - | View CloudHub 2.0 application logs | [doc/logs.md](doc/logs.md) |
 | `http` | - | Send HTTP requests to deployed apps | [doc/http.md](doc/http.md) |
-| `auth` | - | External OAuth2 flow (Azure AD) | [doc/auth.md](doc/auth.md) |
+| `auth` | - | OAuth2 flows (code, client credentials, Azure) | [doc/auth.md](doc/auth.md) |
+| `a2a` | - | A2A (Agent-to-Agent) protocol client | [doc/a2a.md](doc/a2a.md) |
+| `mcp` | - | MCP (Model Context Protocol) client | [doc/mcp.md](doc/mcp.md) |
 | `clear` | - | Clear all resources in an org (except RTF/PS) | [doc/delete.md](doc/delete.md#clear) |
 
 ## Global Options

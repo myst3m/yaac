@@ -55,7 +55,9 @@ yaac deploy app my-app target=hy:leibniz
 | `build` | - | 組み込みMavenでビルド | [doc/build.md](doc/build.md) |
 | `logs` | - | CH2.0アプリログ表示 | [doc/logs.md](doc/logs.md) |
 | `http` | - | デプロイ済みアプリにHTTPリクエスト | [doc/http.md](doc/http.md) |
-| `auth` | - | 外部OAuth2フロー（Azure AD） | [doc/auth.md](doc/auth.md) |
+| `auth` | - | OAuth2フロー（認可コード、クライアント認証、Azure） | [doc/auth.md](doc/auth.md) |
+| `a2a` | - | A2A（Agent-to-Agent）プロトコルクライアント | [doc/a2a.md](doc/a2a.md) |
+| `mcp` | - | MCP（Model Context Protocol）クライアント | [doc/mcp.md](doc/mcp.md) |
 | `clear` | - | org内の全リソースをクリア（RTF/PS除く） | [doc/delete.md](doc/delete.md#clear) |
 
 ## よく使うパターン

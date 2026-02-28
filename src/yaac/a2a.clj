@@ -115,7 +115,8 @@
              ""]))
          (str/join \newline))))
 
-(def options [])
+(def options
+  [["-b" "--bearer-token TOKEN" "Bearer token for Authorization header"]])
 
 (defn- resolve-a2a-url
   "Resolve app name to A2A endpoint URL via describe-application.
@@ -134,18 +135,19 @@
         _ (log/debug "Resolving A2A URL for:" org env app "path:" agent-path)
         [app-context] (desc/describe-application {:args [org env app]})
         public-url (get-in app-context [:target :deployment-settings :http :inbound :public-url])]
-    (when-not public-url
-      (throw (e/app-not-found (str "No public URL found for " app))))
+    (when (str/blank? public-url)
+      (throw (e/app-not-found (str "Public URL is not configured for '" app "'. Enable it in Runtime Manager > Settings > Ingress.")
+                              {:app app :org org :env env})))
     (str public-url agent-path)))
 
-(defn a2a-init [{:keys [args] :as opts}]
+(defn a2a-init [{:keys [args bearer-token] :as opts}]
   (let [raw-args (if (string? args) (str/split args #"\|") args)
         url (if (and (= 1 (count raw-args))
                      (str/starts-with? (first raw-args) "http"))
               (first raw-args)
               (resolve-a2a-url raw-args))]
     (log/debug "A2A URL:" url)
-    (let [card (a2a/discover! url)]
+    (let [card (a2a/discover! url :bearer-token bearer-token)]
       (when *agent-key* (save-last-agent-key! *agent-key*))
       [{:url url
         :agent-name (:name card)
@@ -306,7 +308,7 @@
           (reset! last-summary (extract-text-parts (get-in data [:artifact :parts]))))))
     @last-summary))
 
-(defn a2a-send [{:keys [args] :as opts}]
+(defn a2a-send [{:keys [args bearer-token] :as opts}]
   (let [raw-args (if (string? args) (str/split args #"\|") args)
         text (str/join " " raw-args)]
     (when (str/blank? text)
@@ -317,7 +319,7 @@
             (send-streaming! text)
             (println)
             "")
-        (let [result (a2a/send-message! text)]
+        (let [result (a2a/send-message! text :bearer-token bearer-token)]
           (format-send-result result)))
       (catch Exception e
         (format-a2a-error e)))))
@@ -426,7 +428,7 @@
           (when (str/starts-with? cmd word)
             (.add candidates (Candidate. cmd cmd nil desc nil nil true))))))))
 
-(defn a2a-console [{:keys [args] :as opts}]
+(defn a2a-console [{:keys [args bearer-token] :as opts}]
   (let [raw-args (if (string? args) (str/split args #"\|") args)
         ;; No args → resume last session
         ak (if (seq raw-args)
@@ -440,7 +442,7 @@
                          (str/starts-with? (first raw-args) "http"))
                   (first raw-args)
                   (resolve-a2a-url raw-args))]
-        (a2a/discover! url)))
+        (a2a/discover! url :bearer-token bearer-token)))
     ;; Verify session exists
     (let [session (a2a/current-session)]
       (when-not session
@@ -631,5 +633,8 @@
              :formatter format-card-rich}]
    ["|session" {:handler (with-session a2a-session false)
                  :fields [:url :agent-name :context-id]}]
+   ["|console" {:help true}]
+   ["|console|{*args}" {:handler (with-session a2a-console false)
+                         :output-format :raw}]
    ["|clear" {:handler (with-session a2a-clear false)
                :fields [:message]}]])

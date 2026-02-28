@@ -59,8 +59,9 @@
         _ (log/debug "Resolving MCP URL for:" org env app)
         [app-context] (desc/describe-application {:args [org env app]})
         public-url (get-in app-context [:target :deployment-settings :http :inbound :public-url])]
-    (when-not public-url
-      (throw (e/app-not-found (str "No public URL found for " app))))
+    (when (str/blank? public-url)
+      (throw (e/app-not-found (str "Public URL is not configured for '" app "'. Enable it in Runtime Manager > Settings > Ingress.")
+                              {:app app :org org :env env})))
     (str public-url "/mcp")))
 
 (defn mcp-init [{:keys [args list]

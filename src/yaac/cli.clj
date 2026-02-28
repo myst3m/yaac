@@ -1,6 +1,6 @@
 (ns yaac.cli
   (:gen-class)
-  (:import [java.net URLEncoder])
+  (:import [java.net URLEncoder URLDecoder])
   (:import [com.dylibso.chicory.wasm.types Value]
            [com.dylibso.chicory.wasm Parser]
            [com.dylibso.chicory.runtime  Module ExportFunction Instance])
@@ -67,10 +67,12 @@
         "  update     asset|api ...                                  Update resources configs (alias: upd)"
         "  download   proxy ...                                      Download proxies as Jar file (alias: dl)"
         "  configure  context|credential|clear-cache ...             Configure contexts (aliases: config, cfg)"
-        "  auth       azure                                          OAuth2 authorization code flow"
-        "  build      <goals...>                                      Run Maven goals (embedded)"
+        "  auth       code|client|azure ...                          OAuth2 authorization flows"
+        "  build      <goals...>                                     Run Maven goals (embedded)"
         "  http       -                                              Request HTTP to an application"
-;;        "  dw        [script-path] [input-payload]                  Execute DataWeave scripts"
+        "  logs       app ...                                        View application logs"
+        "  a2a        init|send|console ...                          A2A (Agent-to-Agent) protocol client"
+        "  mcp        init|tool|call ...                             MCP (Model Context Protocol) client"
         ""
         "Please refer to the manual page for more information."
         ""]
@@ -117,7 +119,7 @@
         brief-summary (str (when (seq cmd-summary) (str cmd-summary "\n"))
                            cli-global-options-brief)]
     (->> arguments
-         (map #(str/split % #"="))
+         (map #(str/split % #"=" 2))
          (map (fn [[k v]]
                 [(if v (keyword (str k)) (str k))
                  (some-> v (str/split #"[,]"))]))
@@ -255,8 +257,10 @@
 
 
 (defn -cli [global-opts & a-args]
-  (if-let [matched-route (or (r/match-by-path router (str/join "|" (map #(URLEncoder/encode %) a-args))) ;; URL endode for '%'
-                             (r/match-by-path router (str/join "|" (map #(URLEncoder/encode %) (take 1 a-args)))))]
+  (if-let [matched-route (let [encode-path-segment #(-> (URLEncoder/encode %)
+                                                        (str/replace "+" "%20"))]
+                           (or (r/match-by-path router (str/join "|" (map encode-path-segment a-args)))
+                               (r/match-by-path router (str/join "|" (map encode-path-segment (take 1 a-args))))))]
     (let [{:keys [data path-params path]} matched-route
           {:keys [handler options usage help no-token]} data
           {:keys [args] :as params} path-params

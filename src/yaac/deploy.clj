@@ -47,14 +47,16 @@
                   :mem "request,limit ex. 700Mi,700Mi"
                   :replicas "number ex. 1,2,..."
                   :runtime-version "string ex. 4.10.1:12e (default: 4.10.1:12e)"
-                  :java-version "8 or 17 (default: 17). Combined as runtime-version-java17"]}
+                  :java-version "8 or 17 (default: 17). Combined as runtime-version-java17"
+                  :jvm-args "string ex. \"-XX:+UseG1GC -XX:MaxGCPauseMillis=200\""]}
    :ch2 {:assets [:v-cores "number ex. 0.1, 0.2, 0.5, 1, 2, 4 (For classic pricing model)"
                    :runtime-version "string ex. 4.10.1:12e (default: 4.10.1:12e)"
                    :java-version "8 or 17 (default: 17). Combined as runtime-version-java17"
                    :instance-type "string ex. nano, small, small.mem"
                    :replicas "number ex. 1,2,..."
                    :node-port "number ex. 30500"
-                   :target-port "number ex. 8081"]}})
+                   :target-port "number ex. 8081"
+                   :jvm-args "string ex. \"-XX:+UseG1GC -XX:MaxGCPauseMillis=200\""]}})
 
 (defn usage [opts]
   (let [{:keys [summary help-all]} (if (map? opts) opts {:summary opts :help-all true})]
@@ -118,7 +120,7 @@
       :else (str rv "-java" jv))))
 
 (defn -make-rtf-payload [org env {:keys [group asset version app target runtime-version
-                                         cpu mem replicas java-version]
+                                         cpu mem replicas java-version jvm-args]
                                   :or {runtime-version ["4.10.1:12e"] java-version ["17"]}
                                   :as opts}]
 
@@ -153,7 +155,9 @@
                                            :forwardSslSession false
                                            :generateDefaultPublicUrl false
                                            :persistentObjectStore false
-                                           :jvm {}
+                                           :jvm (if jvm-args
+                                                  {:args (str/join " " jvm-args)}
+                                                  {})
                                            :lastMileSecurity false
                                            :http {:inbound {:publicUrl nil, :pathRewrite nil}}
                                            :resources {:cpu {:limit (last cpu)  :reserved (first cpu)}
@@ -236,7 +240,8 @@
                                               clustered
                                               node-port
                                               target-port
-                                              object-store-v2]
+                                              object-store-v2
+                                              jvm-args]
                                        ;; v-cores should be removed for New PP
                                        [cluster org env app-or-prefix] :args
                                        :or {replicas ["1"]
@@ -311,7 +316,9 @@
                                                                                                       :forwardSslSession false
                                                                                                       :generateDefaultPublicUrl true
                                                                                                       :persistentObjectStore false
-                                                                                                      :jvm {}
+                                                                                                      :jvm (if jvm-args
+                                                                                                             {:args (str/join " " jvm-args)}
+                                                                                                             {})
                                                                                                       :lastMileSecurity false
                                                                                                       :http {:inbound {:pathRewrite nil}}
                                                                                                       :disableAmLogForwarding false

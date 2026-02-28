@@ -55,6 +55,7 @@
              "    - runtime-version"
              "    - state=<start|stop>"
              "    - tracing=<true|false>"
+             "    - jvm-args=\"<args>\"        : JVM arguments for CH2 (e.g. \"-XX:+UseG1GC -XX:MaxGCPauseMillis=200\")"
              "  asset"
              "    - labels"
              "    Note: -g defaults to current org, -v defaults to latest version"
@@ -96,6 +97,9 @@
            ""
            "# Update app state, v-cores, replicas"
            "  > yaac update app hello-world v-cores=0.2 replicas=2 state=stop"
+           ""
+           "# Update JVM args (CloudHub 2.0)"
+           "  > yaac update app hello-world jvm-args=\"-XX:+UseG1GC -XX:MaxGCPauseMillis=200\""
            ""
            "# Update asset labels"
            "  > yaac update asset hello-api labels=db,demo -g T1 -v 0.1.0"
@@ -182,7 +186,7 @@
 
 
 
-(defn update-app-config [{:keys [args v-cores replicas runtime-version state all group asset version tracing]}]
+(defn update-app-config [{:keys [args v-cores replicas runtime-version state all group asset version tracing jvm-args]}]
   (let [[app-name env org] (reverse args) ;; app has to be specified
         target-org-id (yc/org->id (or org *org*))           ;; If specified, use it
         target-env-id (yc/env->id target-org-id (or env *env*))
@@ -230,7 +234,9 @@
                                                                                                                         :start "STARTED"
                                                                                                                         :stop "STOPPED"))
                                                                         tracing (assoc-in [:target :deployment-settings :tracing-enabled]
-                                                                                          (parse-boolean (first tracing)))))})))
+                                                                                          (parse-boolean (first tracing)))
+                                                                        jvm-args (assoc-in [:target :deployment-settings :jvm :args]
+                                                                                           (str/join " " jvm-args))))})))
                              (parse-response)
                              :body
                              (yc/add-extra-fields :status #(get-in % [:status])
