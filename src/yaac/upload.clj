@@ -78,6 +78,23 @@
 
 
 
+(defn- resolve-version
+  "指定バージョンが既存なら patch +1 する。バージョン未指定なら latest+1 or fallback。"
+  [group-id artifact-id version fallback-version]
+  (let [existing (set (keep :version (yc/get-assets {:group group-id :asset artifact-id})))
+        base (or version
+                 (some-> existing seq sort last)
+                 fallback-version)]
+    (if (and base (existing base))
+      (let [v (str/split base #"\.")
+            idx (dec (count v))]
+        (loop [patch (inc (parse-long (nth v idx)))]
+          (let [candidate (str/join "." (assoc v idx (str patch)))]
+            (if (existing candidate)
+              (recur (inc patch))
+              candidate))))
+      base)))
+
 ;; (when-not keep-used-pom (io/delete-file n-path))
 (defn upload-jar [{:keys [group asset version labels asset-type]
                    [jar-path] :args
@@ -90,17 +107,7 @@
                    (org->id group)
                    (org->id (or yc/*org* (-> (yc/-get-root-organization) :id))))
         artifact-id (or asset a)
-        latest-version  (some-> (->> (yc/get-assets {:group group-id :asset artifact-id})
-                                     (keep :version))
-                                (sort)
-                                (last)
-                                (str/split #"\.")
-                                (vec)
-                                (update-in [2] (comp inc parse-long))
-                                (->> (str/join ".")))
-        version (or version
-                    latest-version
-                    v)
+        version (resolve-version group-id artifact-id version v)
         n-path (str "pom-" (rand-int 10000) ".xml")
         
         url (format (gen-url "/exchange/api/v2/organizations/%s/assets/%s/%s/%s") group-id group-id artifact-id version)
@@ -149,7 +156,8 @@
                     :as opts}]
   (if (and group asset version raml-path)
     (let [group-id (org->id group)
-          artifact-id asset]
+          artifact-id asset
+          version (resolve-version group-id artifact-id version nil)]
       (-> @(http/post (format (gen-url "/exchange/api/v2/organizations/%s/assets/%s/%s/%s") group-id group-id artifact-id version)
                       {:headers {"Authorization" (str "Bearer " (:access-token yc/default-credential))
                                  "x-sync-publication" "true"
@@ -172,6 +180,7 @@
   (if (and group asset version oas-path)
     (let [group-id (org->id group)
           artifact-id asset
+          version (resolve-version group-id artifact-id version nil)
           filename (last (str/split oas-path #"/"))
           zip-path (str "/tmp/oas-" (rand-int 100000) ".zip")]
       ;; Create a ZIP file containing the OAS spec
