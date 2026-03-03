@@ -37,6 +37,8 @@
 ;; CH2 Mule Runtime sends service.name="mule-container" for all apps.
 ;; We learn the real app name from log messages like "+ New app 'xxx'"
 ;; and map service.instance.id -> app-name for subsequent logs.
+;; When -O is used, pre-learning logs go under instance-id dir,
+;; then renamed to app-name dir on learning.
 (def ^:private instance-app-map (atom {}))  ;; {service.instance.id -> app-name}
 
 (def ^:private console-formatter
@@ -87,6 +89,36 @@
       (.write w file-line)
       (.newLine w)
       (.flush w))))
+
+(defn- rename-app-dir!
+  "Rename output directory from old-name to new-name and migrate writers."
+  [^String old-name ^String new-name]
+  (when @output-dir
+    ;; Close writers for old name
+    (doseq [type ["logs" "traces"]]
+      (let [k (str old-name "/" type)]
+        (when-let [^BufferedWriter w (get @writers k)]
+          (try (.close w) (catch Exception _))
+          (swap! writers dissoc k))))
+    ;; Rename directory
+    (let [old-dir (java.io.File. ^String @output-dir old-name)
+          new-dir (java.io.File. ^String @output-dir new-name)]
+      (when (.exists old-dir)
+        (if (.exists new-dir)
+          ;; Target exists: append old files to new files
+          (doseq [^java.io.File f (.listFiles old-dir)]
+            (let [target (java.io.File. new-dir (.getName f))]
+              (with-open [in (java.io.FileReader. f)
+                          out (FileWriter. target true)]
+                (let [buf (char-array 4096)]
+                  (loop []
+                    (let [n (.read in buf)]
+                      (when (pos? n)
+                        (.write out buf 0 n)
+                        (recur))))))
+              (.delete f))
+            (.delete old-dir))
+          (.renameTo old-dir new-dir))))))
 
 (defn- close-writers []
   (doseq [[_ ^BufferedWriter w] @writers]
@@ -263,10 +295,15 @@
         raw-service (pb-find-attr resource-attrs "service.name")
         ;; Learn app name from "+ New app 'xxx'" log messages
         _ (when (and instance-id (re-find #"\+ New app '([^']+)'" body-val))
-            (let [app-name (second (re-find #"\+ New app '([^']+)'" body-val))]
+            (let [app-name (second (re-find #"\+ New app '([^']+)'" body-val))
+                  old-name (get @instance-app-map instance-id)]
+              ;; If first time learning (was using instance-id as dir name), rename
+              (when (and (nil? old-name) @output-dir)
+                (rename-app-dir! instance-id app-name))
               (swap! instance-app-map assoc instance-id app-name)))
-        ;; Resolve: learned app name > service.name
+        ;; Resolve: learned app name > instance-id (for dir separation) > service.name
         service-name (or (when instance-id (get @instance-app-map instance-id))
+                         instance-id
                          raw-service)
         flow-name (pb-find-attr attrs "mule.flow.name")]
     {:app service-name
@@ -306,6 +343,7 @@
         instance-id (pb-find-attr resource-attrs "service.instance.id")
         raw-service (pb-find-attr resource-attrs "service.name")
         service-name (or (when instance-id (get @instance-app-map instance-id))
+                         instance-id
                          raw-service)
         kind-num (.getNumber (.getKind span))
         kind (case (int kind-num)
