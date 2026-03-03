@@ -150,7 +150,9 @@
             :artifactId asset
             :version version
             :packaging "jar"}
-      :integrations {:services {:objectStoreV2 {:enabled (boolean (:object-store-v2 opts))}}}
+      :integrations {:services {:objectStoreV2 {:enabled (if (contains? opts :object-store-v2)
+                                                                    (parse-boolean (first (:object-store-v2 opts)))
+                                                                    true)}}}
       :assets []
       :desiredState "STARTED"
       :configuration {:mule.agent.logging.service {:scopeLoggingConfigurations []}
@@ -311,7 +313,9 @@
                                                                        :artifactId asset-name
                                                                        :version version
                                                                        :packaging "jar"}
-                                                                 :integrations {:services {:objectStoreV2 {:enabled (boolean (:object-store-v2 opts))}}}
+                                                                 :integrations {:services {:objectStoreV2 {:enabled (if (contains? opts :object-store-v2)
+                                                                                                                                              (parse-boolean (first (:object-store-v2 opts)))
+                                                                                                                                              true)}}}
                                                                  :assets []
                                                                  :desiredState "STARTED"
                                                                  :configuration {:mule.agent.logging.service {:scopeLoggingConfigurations []}
@@ -526,6 +530,16 @@
 
       (when-not target-name
         (throw (e/runtime-target-not-found "No specified target name." {:target-name given-target-name})))
+
+      ;; Pre-flight: verify asset exists in Exchange
+      (when-let [{g :group a :asset v :version} (select-keys resolved-opts [:group :asset :version])]
+        (when (and g a v)
+          (let [asset-org-id (org->id g)
+                check-url (format (gen-url "/exchange/api/v2/assets/%s/%s/%s") asset-org-id a v)
+                resp @(http/get check-url {:headers (default-headers)})]
+            (when-not (= 200 (:status resp))
+              (throw (e/no-item "Asset not found in Exchange. Upload it first with 'yaac upload asset'."
+                                {:group g :asset a :version v}))))))
 
       (cond
         (= 0 (count targets)) (throw (e/runtime-target-not-found "No runtime found"))

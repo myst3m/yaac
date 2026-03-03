@@ -22,6 +22,8 @@
                                org->name env->name load-session! -get-deployed-applications
                                -enrich-application -get-client-provider
                                gw->id -get-managed-gateway-detail
+                               -get-container-application-specs
+                               -get-api-policy policy-name->id
                                gen-url] :as yc]
             [yaac.error :as e]
             [clojure.string :as str]
@@ -51,6 +53,7 @@
              "  - app [org] [env] <app>         Describe application"
              "  - asset -g <group> -a <asset>   Describe asset"
              "  - policy <group> <asset> [-v V] Describe policy schema"
+             "  - policy-instance|pi [org] [env] <api> <policy-name>  Show applied policy config"
              "  - connected-app <name|id>       Show connected app scopes"
              ""])
           ["Example:"
@@ -80,13 +83,19 @@
 (defmethod -describe-application :mc [org env appi]
   (let [org-id (org->id org)
         env-id (env->id org env)
-        app-id (:id appi)]
-    (-> @(http/get (format (gen-url "/amc/application-manager/api/v2/organizations/%s/environments/%s/deployments/%s") org-id env-id app-id)
-                  {:headers (default-headers)})
-        (parse-response)
-        :body
-        (as-> result
-            (add-extra-fields result :status (-> result :status))))))
+        app-id (:id appi)
+        result (-> @(http/get (format (gen-url "/amc/application-manager/api/v2/organizations/%s/environments/%s/deployments/%s") org-id env-id app-id)
+                              {:headers (default-headers)})
+                   (parse-response)
+                   :body)
+        specs (try (-get-container-application-specs org env (:name appi))
+                   (catch Exception _ nil))
+        props (get-in specs [:application :configuration :mule.agent.application.properties.service :properties])
+        osv2  (get-in specs [:application :integrations :services :object-store-v2 :enabled])]
+    (add-extra-fields result
+                      :status (-> result :status)
+                      :properties props
+                      :object-store-v2 osv2)))
 
 (defmethod -describe-application :server [org env appi]
   (let [org-id (org->id org)
@@ -227,6 +236,16 @@
         (throw (e/no-item "Gateway not found" {:name gw})))
       (-get-managed-gateway-detail org-id env-id gw-id))))
 
+(defn describe-policy-instance [{:keys [args]}]
+  (let [[policy-name api env org] (reverse args)
+        org (or org *org*)
+        env (or env *env*)]
+    (when-not (and org env api policy-name)
+      (throw (e/invalid-arguments "Org, Env, API and policy-name need to be specified" {:args args})))
+    (if-let [policy-id (policy-name->id org env api policy-name)]
+      (-get-api-policy org env api policy-id)
+      (throw (e/no-item (str "Policy '" policy-name "' not found for API " api) {:api api :policy-name policy-name})))))
+
 (defn describe-client-provider [{:keys [args]
                                   [cp-name-or-id] :args}]
   (when-not cp-name-or-id
@@ -344,6 +363,8 @@
                                [:application :ref :version :as "version"]
                                [:application :v-cores]
                                [:target :replicas]
+                               [:extra :object-store-v2 :as "osv2"]
+                               [:extra :properties]
                                [:target :deployment-settings :http :inbound :public-url]
                                [:target :deployment-settings :http :inbound :internal-url]]
                       :handler describe-application}]
@@ -386,6 +407,12 @@
      ["|policy|{*args}" {:handler describe-policy :output-format :json}]
      ["|pol" {:help true}]
      ["|pol|{*args}" {:handler describe-policy :output-format :json}]
+
+     ;; Policy Instances (applied policy configurationData)
+     ["|policy-instance" {:help true}]
+     ["|policy-instance|{*args}" {:handler describe-policy-instance :output-format :json}]
+     ["|pi" {:help true}]
+     ["|pi|{*args}" {:handler describe-policy-instance :output-format :json}]
 
      ;; Client Providers
      ["|cp" {:help true}]

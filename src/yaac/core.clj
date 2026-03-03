@@ -1761,7 +1761,8 @@
                           :asset-id (comp :asset-id :implementation-asset)
                           :version (comp :asset-version :template)
                           :type "regular"
-                          :order :order))))
+                          :order :order
+                          :config :configuration-data))))
 
 (defn -get-automated-api-policies [org env]
   (let [org-id (org->id (or org *org*))
@@ -2356,7 +2357,8 @@
 
    ["|" {:handler get-api-policies
           :fields [[:extra :asset-id] [:extra :version] [:extra :group-id]
-                   [:extra :id :fmt short-uuid] [:extra :type] [:extra :order]]}
+                   [:extra :id :fmt short-uuid] [:extra :type] [:extra :order]
+                   [:extra :config]]}
     ["policy"]
     ["policy|{*args}"]
     ["pol"]

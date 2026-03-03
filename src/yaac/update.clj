@@ -211,7 +211,7 @@
 
 
 
-(defn update-app-config [{:keys [args v-cores replicas runtime-version state all group asset version tracing jvm-args] :as opts}]
+(defn update-app-config [{:keys [args v-cores replicas runtime-version state all group asset version tracing jvm-args object-store-v2] :as opts}]
   (let [opts (merge-otel-props opts)
         plus-props (extract-plus-props opts)
         [app-name env org] (reverse args) ;; app has to be specified
@@ -264,6 +264,9 @@
                                                                                           (parse-boolean (first tracing)))
                                                                         jvm-args (assoc-in [:target :deployment-settings :jvm :args]
                                                                                            (str/join " " jvm-args))
+                                                                        object-store-v2
+                                                                        (assoc-in [:application :integrations :services :objectStoreV2 :enabled]
+                                                                                  (parse-boolean (first object-store-v2)))
                                                                         (seq plus-props)
                                                                         (assoc-in [:application :configuration
                                                                                    :mule.agent.application.properties.service
