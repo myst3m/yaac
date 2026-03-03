@@ -33,6 +33,7 @@
             [yaac.a2a]
             [yaac.logs :as logs]
             [yaac.nrepl]
+            [yaac.otel]
             [yaac.analyze :as ana]
             ;;[yaac.dw :as dw]
             [clojure.core.async :as async]
@@ -73,6 +74,7 @@
         "  logs       app ...                                        View application logs"
         "  a2a        init|send|console ...                          A2A (Agent-to-Agent) protocol client"
         "  mcp        init|tool|call ...                             MCP (Model Context Protocol) client"
+        "  otel       <port> [--ssl --cert --key]                   OTLP collector (logs/traces)"
         ""
         "Please refer to the manual page for more information."
         ""]
@@ -492,6 +494,12 @@
                   *deploy-target* (:deploy-target default-context)]
           (yaac.a2a/a2a-console {:args (vec (drop 2 arguments))}))
         (catch clojure.lang.ExceptionInfo e (print-explain e :debug (:debug options)))
+        (catch Exception e (print-error e :debug (:debug options))))
+
+      ;; OTLP Collector
+      (= (first arguments) "otel")
+      (try
+        (apply yaac.otel/cli (rest arguments))
         (catch Exception e (print-error e :debug (:debug options))))
 
       ;; nREPL

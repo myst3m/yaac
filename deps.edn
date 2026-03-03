@@ -22,12 +22,10 @@
                                   :exclusions [com.cognitect/transit-clj
                                                buddy/buddy
                                                twitter-api/twitter-api]}
-        io.gitlab.myst3m/zeph {:git/url "https://gitlab.com/myst3m/zeph"
-                                 :sha "6f5f176889dbefd1a89a2ff6a6c0c2d2a43a460e"}
-        org.mule.weave/runtime {:mvn/version "2.9.1"}
-        org.mule.weave/core-modules {:mvn/version "2.9.1"}
-        org.mule.weave/java-module {:mvn/version "2.9.1"}
-        org.mule.weave/yaml-module {:mvn/version "2.9.1"}
+        io.gitlab.myst3m/zeph {:local/root "/home/myst/projects/zeph"}
+        io.opentelemetry.proto/opentelemetry-proto {:mvn/version "1.5.0-alpha"}
+        com.google.protobuf/protobuf-java {:mvn/version "4.29.3"}
+
         com.github.clj-easy/graal-build-time {:mvn/version "1.0.5"}
         metosin/malli {:mvn/version "0.16.4"}
         nrepl/nrepl {:mvn/version "1.3.0"}

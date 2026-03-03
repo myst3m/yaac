@@ -47,3 +47,7 @@ test.dwl
 .studio_analytics_id.txt
 .projectile
 examples/
+
+# GraalVM tracing agent classdata
+agent-extracted-predefined-classes/
+resources/META-INF/native-image/yaac/agent-extracted-predefined-classes/
