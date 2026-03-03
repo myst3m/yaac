@@ -1,7 +1,6 @@
 (ns yaac.incubate
-  (:require [silvur
-             [util :refer [json->edn edn->json]]
-             [log :as log]]
+  (:require [silvur.util :refer [json->edn edn->json]]
+            [taoensso.timbre :as log]
             [zeph.client :as http]
             [reitit.core :as r]
             [yaac.core :refer [parse-response default-headers org->id load-session! gen-url] :as yc]

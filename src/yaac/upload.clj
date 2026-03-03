@@ -12,9 +12,8 @@
 
 (ns yaac.upload
   (:import [java.util.zip ZipEntry ZipFile])
-  (:require [silvur
-             [util :refer [json->edn edn->json]]
-             [log :as log]]
+  (:require [silvur.util :refer [json->edn edn->json]]
+            [taoensso.timbre :as log]
             [zeph.client :as http]
             [reitit.core :as r]
             [clojure.zip :as z]

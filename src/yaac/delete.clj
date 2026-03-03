@@ -11,9 +11,8 @@
 
 
 (ns yaac.delete
-  (:require [silvur
-             [util :refer [json->edn edn->json]]
-             [log :as log]]
+  (:require [silvur.util :refer [json->edn edn->json]]
+            [taoensso.timbre :as log]
             [zeph.client :as http]
             [reitit.core :as r]
             [yaac.core :refer [*org* *env* *no-multi-thread* parse-response

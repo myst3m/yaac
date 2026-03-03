@@ -4,7 +4,7 @@
             [yaac.error :as e]
             [yaac.markdown :as markdown]
             [yaac.util :as util]
-            [silvur.a2a :as a2a]
+            [yaac.proto.a2a :as a2a]
             [clojure.string :as str]
             [taoensso.timbre :as log]
             [jansi-clj.core :as jansi]

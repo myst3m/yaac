@@ -1,7 +1,7 @@
 (ns yaac.core-test
   (:require [yaac.core :as yc]
             [yaac.login :as yl]
-            [silvur.log :as log]
+            [taoensso.timbre :as log]
             [clojure.test :as t :refer (deftest is testing use-fixtures are)]))
 
 

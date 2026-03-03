@@ -2,7 +2,7 @@
   (:require [yaac.core :refer [*org* *env*]]
             [yaac.describe :as desc]
             [yaac.error :as e]
-            [silvur.mcp :as mcp]
+            [yaac.proto.mcp :as mcp]
             [clojure.string :as str]
             [taoensso.timbre :as log]
             [jansi-clj.core :as jansi]

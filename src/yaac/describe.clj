@@ -11,9 +11,8 @@
 
 
 (ns yaac.describe
-  (:require [silvur
-             [util :refer [json->edn edn->json]]
-             [log :as log]]
+  (:require [silvur.util :refer [json->edn edn->json]]
+            [taoensso.timbre :as log]
             [zeph.client :as http]
             [reitit.core :as r]
             [yaac.core :refer [*org* *env* *deploy-target* parse-response default-headers
