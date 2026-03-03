@@ -56,6 +56,8 @@
              "    - state=<start|stop>"
              "    - tracing=<true|false>"
              "    - jvm-args=\"<args>\"        : JVM arguments for CH2 (e.g. \"-XX:+UseG1GC -XX:MaxGCPauseMillis=200\")"
+             "    - +key=value               : Application properties (e.g. +mule.env=prod)"
+             "    - -L <url>                 : OTLP endpoint (auto-sets all mule.openTelemetry.* properties)"
              "  asset"
              "    - labels"
              "    Note: -g defaults to current org, -v defaults to latest version"
@@ -107,6 +109,27 @@
          (str/join \newline))))
 
 
+(defn- merge-otel-props
+  "Expand -L <endpoint> into +mule.openTelemetry.* properties"
+  [opts]
+  (if-let [endpoint (:otel-endpoint opts)]
+    (merge {(keyword "+mule.openTelemetry.tracer.exporter.type") ["HTTP"]
+            (keyword "+mule.openTelemetry.tracer.exporter.enabled") ["true"]
+            (keyword "+mule.openTelemetry.tracer.exporter.endpoint") [(str endpoint "/v1/traces")]
+            (keyword "+mule.openTelemetry.logging.exporter.type") ["HTTP"]
+            (keyword "+mule.openTelemetry.logging.exporter.enabled") ["true"]
+            (keyword "+mule.openTelemetry.logging.exporter.endpoint") [(str endpoint "/v1/logs")]}
+           opts)
+    opts))
+
+(defn- extract-plus-props
+  "Extract +key=value properties from opts map"
+  [opts]
+  (->> opts
+       (filter (fn [[k _]] (re-find #"^\+" (name k))))
+       (map (fn [[k v]] [(keyword (subs (name k) 1)) (str/join "," v)]))
+       (into {})))
+
 (def options [["-g" "--group NAME" "Group name. Normally BG name"]
               ["-a" "--asset NAME" "Asset name"]
               ["-v" "--version VERSION" "Asset version"]
@@ -143,7 +166,9 @@
               [nil "--jwks-url URL" "JWKS URL for JWT validation policy"
                :id :jwks-url]
               [nil "--config FILE" "JSON config file for policy configurationData"
-               :id :config]])
+               :id :config]
+              ["-L" "--otel-endpoint URL" "OTLP endpoint URL (auto-sets all OTLP properties)"
+               :id :otel-endpoint]])
 
 
 (defn update-asset-config [{:keys [args group asset version labels]
@@ -186,8 +211,10 @@
 
 
 
-(defn update-app-config [{:keys [args v-cores replicas runtime-version state all group asset version tracing jvm-args]}]
-  (let [[app-name env org] (reverse args) ;; app has to be specified
+(defn update-app-config [{:keys [args v-cores replicas runtime-version state all group asset version tracing jvm-args] :as opts}]
+  (let [opts (merge-otel-props opts)
+        plus-props (extract-plus-props opts)
+        [app-name env org] (reverse args) ;; app has to be specified
         target-org-id (yc/org->id (or org *org*))           ;; If specified, use it
         target-env-id (yc/env->id target-org-id (or env *env*))
         apps (yc/name->apps target-org-id target-env-id app-name)]
@@ -236,7 +263,11 @@
                                                                         tracing (assoc-in [:target :deployment-settings :tracing-enabled]
                                                                                           (parse-boolean (first tracing)))
                                                                         jvm-args (assoc-in [:target :deployment-settings :jvm :args]
-                                                                                           (str/join " " jvm-args))))})))
+                                                                                           (str/join " " jvm-args))
+                                                                        (seq plus-props)
+                                                                        (assoc-in [:application :configuration
+                                                                                   :mule.agent.application.properties.service
+                                                                                   :properties] plus-props)))})))
                              (parse-response)
                              :body
                              (yc/add-extra-fields :status #(get-in % [:status])

@@ -101,11 +101,26 @@
            ""])
          (str/join \newline))))
 
+(defn- merge-otel-props
+  "Expand -L <endpoint> into +mule.openTelemetry.* properties"
+  [opts]
+  (if-let [endpoint (:otel-endpoint opts)]
+    (merge {(keyword "+mule.openTelemetry.tracer.exporter.type") ["HTTP"]
+            (keyword "+mule.openTelemetry.tracer.exporter.enabled") ["true"]
+            (keyword "+mule.openTelemetry.tracer.exporter.endpoint") [(str endpoint "/v1/traces")]
+            (keyword "+mule.openTelemetry.logging.exporter.type") ["HTTP"]
+            (keyword "+mule.openTelemetry.logging.exporter.enabled") ["true"]
+            (keyword "+mule.openTelemetry.logging.exporter.endpoint") [(str endpoint "/v1/logs")]}
+           opts)
+    opts))
+
 (def options [["-g" "--group NAME" "Group name. Normally BG name"]
               ["-a" "--asset NAME" "Asset name"]
               ["-v" "--version VERSION" "Asset version"]
               ["-q" "--search-term STRING" "Query string. Same as search-term=STRING"
-               :parse-fn #(str/split % #",")]])
+               :parse-fn #(str/split % #",")]
+              ["-L" "--otel-endpoint URL" "OTLP endpoint URL (auto-sets all OTLP properties)"
+               :id :otel-endpoint]])
 
 (defn- build-runtime-version
   "Build runtime version string with java version suffix.
@@ -455,6 +470,7 @@
 ;; deploy app T1 Production my-app target=ch2:ap-northeast-1 -g T1
 (defn deploy-application [{:keys [args target]
                            :as opts}]
+  (let [opts (merge-otel-props opts)]
 
   (log/debug "opts:" (dissoc opts :summary))
   (log/debug "target:" (or target *deploy-target*))
@@ -520,7 +536,7 @@
                   (#{:runtime-fabric} target-type) (-deploy-rtf-application (assoc resolved-opts :args n-args))
                   (#{:cloudhub2 :ps :private-space :shared-space} target-type) (-deploy-cloudhub20-application (assoc resolved-opts :args n-args))
                   (#{:hybrid :server} target-type) (-deploy-hybrid-application (assoc resolved-opts :args n-args))
-                  :else (throw (e/runtime-target-not-found "No specified target type." {:target-type target-type :target-name target-name}))))))))
+                  :else (throw (e/runtime-target-not-found "No specified target type." {:target-type target-type :target-name target-name})))))))))
 
 ;; This is for RTF/CH2
 ;; https://anypoint.mulesoft.com/exchange/portals/anypoint-platform/f1e97bc6-315a-4490-82a7-23abe036327a.anypoint-platform/proxies-xapi/minor/1.0/pages/Getting%20Started/
