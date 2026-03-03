@@ -76,6 +76,19 @@ yaac deploy app my-app target=hy:leibniz
 | `node-port` | Node port | `node-port=30500` |
 | `target-port` | Target port | `target-port=8081` |
 
+### Shared Keys
+
+| Key | Description | Default | Example |
+|-----|-------------|---------|---------|
+| `object-store-v2` | Enable Object Store V2 | `true` | `object-store-v2=false` |
+
+> **Note:** Object Store V2 is enabled by default. Set `object-store-v2=false` explicitly to disable.
+
+### Asset Pre-flight Check
+
+Before deploying, yaac verifies that the specified asset (`-g`, `-a`, `-v`) exists in Exchange.
+If the asset is not found, the deploy fails early with an error message instead of sending an invalid request to the platform.
+
 ### Application Properties
 
 Prefix with `+` to set application properties:

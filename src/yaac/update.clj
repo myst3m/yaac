@@ -55,6 +55,7 @@
              "    - runtime-version"
              "    - state=<start|stop>"
              "    - tracing=<true|false>"
+             "    - object-store-v2=<true|false> : Enable/disable Object Store V2"
              "    - jvm-args=\"<args>\"        : JVM arguments for CH2 (e.g. \"-XX:+UseG1GC -XX:MaxGCPauseMillis=200\")"
              "    - +key=value               : Application properties (e.g. +mule.env=prod)"
              "    - -L <url>                 : OTLP endpoint (auto-sets all mule.openTelemetry.* properties)"

@@ -32,6 +32,11 @@ yaac update app [org] [env] <app> [key=value...]
 | `replicas` | Number of replicas | `replicas=2` |
 | `runtime-version` | Mule runtime version | `runtime-version=4.10.1:12e` |
 | `state` | Start or stop | `state=start`, `state=stop` |
+| `object-store-v2` | Enable/disable Object Store V2 | `object-store-v2=true` |
+| `tracing` | Enable/disable tracing | `tracing=true` |
+| `jvm-args` | JVM arguments (CH2) | `jvm-args="-XX:+UseG1GC"` |
+| `+key` | Application properties | `+mule.env=prod` |
+| `-L` | OTLP endpoint (auto-sets all OTLP props) | `-L https://otel.example.com` |
 
 ### Exchange Asset
 
@@ -142,6 +147,9 @@ yaac update app T1 Production my-app state=start
 
 # Scale replicas
 yaac update app T1 Production my-app replicas=3
+
+# Enable Object Store V2
+yaac update app T1 Sandbox my-app object-store-v2=true
 
 # Update org entitlements
 yaac update org T1 v-cores-production=0.5 v-cores-sandbox=0.2

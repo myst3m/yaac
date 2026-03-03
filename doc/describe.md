@@ -29,6 +29,7 @@ yaac describe <resource> [args] [options]
 | `describe api` | `desc api` | `describe api [org] [env] <api>` |
 | `describe capp` | `desc connected-app` | `describe capp <name\|id>` |
 | `describe cp` | `desc client-provider` | `describe cp <name\|id>` |
+| `describe policy-instance` | `desc pi` | `describe pi [org] [env] <api> <policy-name>` |
 
 ## Output Details
 
@@ -39,6 +40,8 @@ Shows detailed application information:
 - Public URL, internal URL
 - Runtime version, Java version
 - Deployment status, last modified
+- Application properties (`+key=value`)
+- Object Store V2 enabled/disabled
 
 ### describe asset
 
@@ -51,6 +54,11 @@ Shows Exchange asset details:
 Shows Connected App scope assignments:
 - Basic scopes, org-level scopes, env-level scopes
 
+### describe policy-instance
+
+Shows the full configuration of an applied policy on an API instance.
+Resolves the policy by its asset-id (name) and returns the `configurationData` as JSON.
+
 ## Examples
 
 ```bash
@@ -58,6 +66,9 @@ yaac describe org T1
 yaac describe app T1 Production my-app
 yaac describe asset -g T1 -a hello-app
 yaac describe connected-app myapp
+
+# Show applied policy configuration
+yaac desc pi T1 Sandbox 20762752 credential-injection-oauth2-obo
 ```
 
 ## See Also

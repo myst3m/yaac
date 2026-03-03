@@ -63,7 +63,7 @@ yaac get serv T1 Production
 | `get proxy` | - | List API proxies |
 | `get gw` | `gateway` | List Flex Gateways (standalone + managed) |
 | `get cont` | `contract` | List API contracts |
-| `get policy` | `pol` | List API policies |
+| `get policy` | `pol` | List API policies (includes configurationData) |
 | `get np` | `node-port` | Available node ports in Private Spaces |
 
 ```bash
