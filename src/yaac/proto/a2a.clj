@@ -34,6 +34,13 @@
 (defn current-session []
   (load-session))
 
+(defn clear-task-id!
+  "Clear task-id from session so the next message starts a new task.
+   Used after auth-required to avoid sending the stale task-id."
+  []
+  (when-let [session (load-session)]
+    (save-session! (dissoc session :task-id))))
+
 ;; JSON-RPC helpers
 (defn- make-request [method params id]
   {:jsonrpc "2.0"
@@ -93,7 +100,7 @@
 (defn send-message!
   "Send a text message via message/send. Returns task result.
    Optional :bearer-token for Authorization header.
-   Optional :secondary-token for InTaskAC flow (metadata.secondary_credentials.accessToken)."
+   Optional :secondary-token for InTaskAC flow (parts[].data.auth_credentials.accessToken)."
   [text & {:keys [context-id task-id bearer-token secondary-token]}]
   (let [session (current-session)
         _ (when-not session
@@ -111,9 +118,10 @@
                      :parts [{:kind "text" :text text}]}
               ctx (assoc :contextId ctx)
               tid (assoc :taskId tid)
-              ;; InTaskAC: pass supplier access token in message metadata
-              secondary-token (assoc :metadata {:secondary_credentials
-                                                {:accessToken secondary-token}}))
+              ;; InTaskAC: pass auth credentials as DataPart (official A2A format)
+              secondary-token (update :parts conj {:kind "data"
+                                                   :data {:auth_credentials
+                                                          {:accessToken secondary-token}}}))
         params (cond-> {:message msg
                         :configuration {:acceptedOutputModes ["text"]}}
                  ctx (assoc :contextId ctx)
@@ -162,8 +170,9 @@
                      :parts [{:kind "text" :text text}]}
               ctx (assoc :contextId ctx)
               tid (assoc :taskId tid)
-              secondary-token (assoc :metadata {:secondary_credentials
-                                                {:accessToken secondary-token}}))
+              secondary-token (update :parts conj {:kind "data"
+                                                   :data {:auth_credentials
+                                                          {:accessToken secondary-token}}}))
         params (cond-> {:message msg
                         :configuration {:acceptedOutputModes ["text"]}}
                  ctx (assoc :contextId ctx)

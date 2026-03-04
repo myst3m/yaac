@@ -11,7 +11,8 @@
             [jsonista.core :as json]
             [camel-snake-kebab.core :as csk]
             [camel-snake-kebab.extras :as cske])
-  (:import [java.io BufferedReader InputStreamReader]))
+  (:import [java.io BufferedReader InputStreamReader]
+           [com.fasterxml.jackson.core.util DefaultPrettyPrinter Separators Separators$Spacing]))
 
 (defn json->edn
   "Parse JSON string to EDN with key transformation.
@@ -44,7 +45,11 @@
 
 (def pretty-mapper
   "ObjectMapper for pretty-printing JSON"
-  (json/object-mapper {:pretty true}))
+  (let [seps (-> (Separators/createDefaultInstance)
+                 (.withObjectFieldValueSpacing Separators$Spacing/AFTER))
+        pp   (DefaultPrettyPrinter. seps)]
+    (doto (json/object-mapper {:pretty true})
+      (.setDefaultPrettyPrinter pp))))
 
 (defn json-pprint
   "Pretty print data as JSON string"

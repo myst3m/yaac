@@ -488,11 +488,13 @@
       (try
         (load-default-context!)
         (yc/load-session!)
-        (binding [*org* (:organization default-context)
-                  *env* (:environment default-context)
-                  *no-cache* (:no-cache options)
-                  *deploy-target* (:deploy-target default-context)]
-          (yaac.a2a/a2a-console {:args (vec (drop 2 arguments))}))
+        (let [console-args (vec (drop 2 arguments))
+              {:keys [options arguments]} (parse-opts console-args yaac.a2a/options)]
+          (binding [*org* (:organization default-context)
+                    *env* (:environment default-context)
+                    *no-cache* (:no-cache options)
+                    *deploy-target* (:deploy-target default-context)]
+            (yaac.a2a/a2a-console (merge {:args (vec arguments)} options))))
         (catch clojure.lang.ExceptionInfo e (print-explain e :debug (:debug options)))
         (catch Exception e (print-error e :debug (:debug options))))
 

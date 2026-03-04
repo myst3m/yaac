@@ -192,6 +192,7 @@
                   "failed" (jansi/fg :red status)
                   "working" (jansi/fg :yellow status)
                   "input-required" (jansi/fg :cyan status)
+                  "auth-required" (jansi/fg :yellow status)
                   (jansi/a :faint status))
             "\n"
             (when (seq artifacts)
@@ -203,11 +204,21 @@
                                          (extract-text-parts parts)))
                                   artifacts))
                    "\n"))
+            (when (= "auth-required" status)
+              (let [challenge (some->> (get-in result [:status :message :parts])
+                                       (filter #(= "data" (:kind %)))
+                                       first :data :authChallenge)]
+                (str "\n" (jansi/fg :yellow "認証が必要です")
+                     (when challenge
+                       (str "\n\n"
+                            "  Authorization Endpoint: " (:authorizationEndpoint challenge)
+                            "\n  Scopes: " (:scopes challenge)))
+                     "\n\n" (jansi/a :faint "トークン取得後: /auth <access_token> で再送してください") "\n")))
             (when-let [msg (get-in result [:status :message])]
               (let [text (if (map? msg)
                            (extract-text-parts (:parts msg))
                            (str msg))]
-                (when (and (seq text) (not (seq artifacts)))
+                (when (and (seq text) (not (seq artifacts)) (not= "auth-required" status))
                   (str "\n" text "\n"))))))
 
      ;; Fallback — try to extract artifacts or parts
@@ -261,6 +272,16 @@
         "working" (str (jansi/fg :yellow "⟳ ") (jansi/a :blink (jansi/fg :yellow "working...")))
         "completed" (jansi/a :faint (str "✓ " state))
         "input-required" (jansi/a :faint (str "? " state))
+        "auth-required"
+        (let [challenge (some->> (get-in data [:status :message :parts])
+                                 (filter #(= "data" (:kind %)))
+                                 first :data :authChallenge)]
+          (str (jansi/fg :yellow "🔐 認証が必要です")
+               (when challenge
+                 (str "\n"
+                      "  Authorization Endpoint: " (:authorizationEndpoint challenge)
+                      "\n  Scopes: " (:scopes challenge)))
+               "\n" (jansi/a :faint "トークン取得後: /auth <access_token> で再送してください")))
         "failed" (str (jansi/a :faint (str "✗ " state))
                       (when-let [msg (get-in data [:status :message])]
                         (str "\n" (extract-text-parts (:parts msg)))))
@@ -319,8 +340,14 @@
             (send-streaming! text)
             (println)
             "")
-        (let [result (a2a/send-message! text :bearer-token bearer-token)]
-          (format-send-result result)))
+        (let [result (a2a/send-message! text :bearer-token bearer-token)
+              output (format-send-result result)]
+          ;; For non-interactive mode, show auth-required info on stderr
+          (when (= "auth-required" (get-in result [:status :state]))
+            (binding [*out* *err*]
+              (println (jansi/a :faint
+                (str "Hint: use 'yaac a2a console' for interactive auth flow")))))
+          output))
       (catch Exception e
         (format-a2a-error e)))))
 
@@ -409,7 +436,8 @@
 ;; --- Interactive Console ---
 
 (def ^:private slash-commands
-  [["/card"    "Show agent card"]
+  [["/auth"    "Send auth token (InTaskAC)"]
+   ["/card"    "Show agent card"]
    ["/session" "Show session info"]
    ["/clear"   "Clear session and reconnect"]
    ["/help"    "Show commands"]
@@ -443,6 +471,8 @@
                   (first raw-args)
                   (resolve-a2a-url raw-args))]
         (a2a/discover! url :bearer-token bearer-token)))
+    ;; Pending auth state for InTaskAC flow
+    (let [pending-auth (atom nil)]
     ;; Verify session exists
     (let [session (a2a/current-session)]
       (when-not session
@@ -554,11 +584,52 @@
               ;; Slash commands
               (str/starts-with? line "/")
               (let [cmd (str/lower-case (str/trim line))]
-                (case cmd
-                  ("/quit" "/exit" "/q")
+                (cond
+                  (contains? #{"/quit" "/exit" "/q"} cmd)
                   (println (jansi/a :faint "Bye."))
 
-                  "/card"
+                  (str/starts-with? cmd "/auth")
+                  (let [token (str/trim (subs line 5))]
+                    (if (str/blank? token)
+                      (do (println (jansi/fg :yellow "Usage: /auth <access_token>"))
+                          (recur))
+                      (if-let [{:keys [task-id context-id]} @pending-auth]
+                        (do
+                          (try
+                            (println)
+                            (if (streaming-capable?)
+                              (let [last-result (atom nil)]
+                                (a2a/send-message-stream! "resume"
+                                  (fn [{:keys [event data] :as evt}]
+                                    (when-let [formatted (format-stream-event evt)]
+                                      (println formatted)
+                                      (flush))
+                                    (reset! last-result data))
+                                  :secondary-token token
+                                  :task-id task-id
+                                  :context-id context-id)
+                                (when (= "auth-required" (get-in @last-result [:status :state]))
+                                  (reset! pending-auth {:task-id (:id @last-result)
+                                                        :context-id (:contextId @last-result)})))
+                              (let [result (util/with-spin "Authenticating..."
+                                             (a2a/send-message! "resume"
+                                               :secondary-token token
+                                               :task-id task-id
+                                               :context-id context-id))]
+                                (print (format-send-result result {:show-artifact-name false}))
+                                (flush)
+                                (if (= "auth-required" (get-in result [:status :state]))
+                                  (reset! pending-auth {:task-id (:id result)
+                                                        :context-id (:contextId result)})
+                                  (reset! pending-auth nil))))
+                            (catch Exception e
+                              (println (format-a2a-error e))))
+                          (println)
+                          (recur))
+                        (do (println (jansi/fg :yellow "認証待ちのタスクがありません"))
+                            (recur)))))
+
+                  (= cmd "/card")
                   (do (let [s (a2a/current-session)
                             card (:agent-card s)
                             card (if (and (:url card)
@@ -569,7 +640,7 @@
                         (println (format-card-rich nil [card] nil)))
                       (recur))
 
-                  "/session"
+                  (= cmd "/session")
                   (let [{:keys [url agent-card context-id]} (a2a/current-session)]
                     (println (str "  Agent: " (:name agent-card "Unknown")))
                     (println (str "  URL:   " url))
@@ -577,7 +648,7 @@
                     (println)
                     (recur))
 
-                  "/clear"
+                  (= cmd "/clear")
                   (do (#'a2a/clear-session!)
                       (println (jansi/fg :yellow "Session cleared."))
                       (when (seq args)
@@ -591,11 +662,12 @@
                       (println)
                       (recur))
 
-                  "/help"
+                  (= cmd "/help")
                   (do (println) (println console-help) (println)
                       (recur))
 
                   ;; Unknown slash command
+                  :else
                   (do (println (str (jansi/fg :yellow "Unknown command: ") cmd))
                       (println (jansi/a :faint "Type /help for available commands."))
                       (recur))))
@@ -606,15 +678,33 @@
                 (try
                   (println)
                   (if (streaming-capable?)
-                    (send-streaming! line)
+                    (let [last-result (atom nil)]
+                      (a2a/send-message-stream! line
+                        (fn [{:keys [event data] :as evt}]
+                          (when-let [formatted (format-stream-event evt)]
+                            (println formatted)
+                            (flush))
+                          (reset! last-result data)))
+                      ;; Check for auth-required in streaming result
+                      (when (= "auth-required" (get-in @last-result [:status :state]))
+                        (reset! pending-auth {:task-id (:id @last-result)
+                                              :context-id (:contextId @last-result)})
+                        ;; Clear session task-id so next regular message starts a new task
+                        (a2a/clear-task-id!)))
                     (let [result (util/with-spin "Processing..."
                                    (a2a/send-message! line))]
                       (print (format-send-result result {:show-artifact-name false}))
-                      (flush)))
+                      (flush)
+                      ;; Check for auth-required
+                      (when (= "auth-required" (get-in result [:status :state]))
+                        (reset! pending-auth {:task-id (:id result)
+                                              :context-id (:contextId result)})
+                        ;; Clear session task-id so next regular message starts a new task
+                        (a2a/clear-task-id!))))
                   (catch Exception e
                     (println (format-a2a-error e))))
                 (println)
-                (recur))))))))))
+                (recur)))))))))))
 
 
 (def route
