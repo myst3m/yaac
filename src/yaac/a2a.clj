@@ -597,7 +597,7 @@
               (.bind main-km (Reference. "backward-delete-filter") (into-array CharSequence ["\u007f"]))
               ;; Bind Enter to slash-aware accept
               (.bind main-km (Reference. "slash-accept-line") (into-array CharSequence ["\r" "\n"])))))
-        (loop []
+        (loop [last-interrupt 0]
           (let [line (try
                        (.readLine reader "> ")
                        (catch EndOfFileException _ nil)
@@ -607,13 +607,17 @@
               (nil? line)
               (println (jansi/a :faint "\nBye."))
 
-              ;; Ctrl+C — cancel current input
+              ;; Ctrl+C — double press within 1s to exit
               (= :interrupted line)
-              (do (println) (recur))
+              (let [now (System/currentTimeMillis)]
+                (if (< (- now last-interrupt) 1000)
+                  (println (jansi/a :faint "\nBye."))
+                  (do (println (jansi/a :faint " (Press Ctrl+C again to exit)"))
+                      (recur now))))
 
               ;; Empty line
               (str/blank? line)
-              (recur)
+              (recur 0)
 
               ;; Slash commands
               (str/starts-with? line "/")
@@ -626,7 +630,7 @@
                   (let [token (str/trim (subs line 5))]
                     (if (str/blank? token)
                       (do (println (jansi/fg :yellow "Usage: /auth <access_token>"))
-                          (recur))
+                          (recur 0))
                       (if-let [{:keys [task-id context-id]} @pending-auth]
                         (do
                           (try
@@ -659,9 +663,9 @@
                             (catch Exception e
                               (println (format-a2a-error e))))
                           (println)
-                          (recur))
+                          (recur 0))
                         (do (println (jansi/fg :yellow "認証待ちのタスクがありません"))
-                            (recur)))))
+                            (recur 0)))))
 
                   (= cmd "/card")
                   (do (let [s (a2a/current-session)
@@ -672,7 +676,7 @@
                                    (assoc card :url (:url s))
                                    card)]
                         (println (format-card-rich nil [card] nil)))
-                      (recur))
+                      (recur 0))
 
                   (= cmd "/session")
                   (let [{:keys [url agent-card context-id]} (a2a/current-session)]
@@ -680,7 +684,7 @@
                     (println (str "  URL:   " url))
                     (println (str "  Context: " (or context-id "-")))
                     (println)
-                    (recur))
+                    (recur 0))
 
                   (= cmd "/clear")
                   (do (#'a2a/clear-session!)
@@ -694,17 +698,17 @@
                               card (a2a/discover! url)]
                           (println (str (jansi/fg :green "Reconnected: ") (:name card)))))
                       (println)
-                      (recur))
+                      (recur 0))
 
                   (= cmd "/help")
                   (do (println) (println console-help) (println)
-                      (recur))
+                      (recur 0))
 
                   ;; Unknown slash command
                   :else
                   (do (println (str (jansi/fg :yellow "Unknown command: ") cmd))
                       (println (jansi/a :faint "Type /help for available commands."))
-                      (recur))))
+                      (recur 0))))
 
               ;; Normal message → send to agent
               :else
@@ -738,7 +742,7 @@
                   (catch Exception e
                     (println (format-a2a-error e))))
                 (println)
-                (recur)))))))))))
+                (recur 0)))))))))))
 
 
 (def route
