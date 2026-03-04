@@ -169,6 +169,46 @@
        (str/join "\n")
        markdown/render))
 
+(defn- url-encode
+  "Simple URL encoding for query parameter values (GraalVM native-image safe)."
+  [s]
+  (-> (str s)
+      (str/replace "%" "%25")
+      (str/replace " " "%20")
+      (str/replace ":" "%3A")
+      (str/replace "/" "%2F")
+      (str/replace "?" "%3F")
+      (str/replace "#" "%23")
+      (str/replace "&" "%26")
+      (str/replace "=" "%3D")
+      (str/replace "+" "%2B")
+      (str/replace "@" "%40")))
+
+(defn- format-auth-challenge
+  "Format authChallenge as a browser-ready authorization URL."
+  [challenge]
+  (when challenge
+    (let [endpoint (:authorizationEndpoint challenge)
+          scopes (:scopes challenge)
+          scope-str (if (sequential? scopes) (str/join " " scopes) (str scopes))
+          redirect-uri (:redirectUri challenge)
+          response-type (or (:responseType challenge) "code")
+          client-id (or (:clientId challenge) "intask-client")
+          params (cond-> []
+                   true (conj (str "response_type=" (url-encode response-type)))
+                   true (conj (str "client_id=" (url-encode client-id)))
+                   (seq scope-str) (conj (str "scope=" (url-encode scope-str)))
+                   redirect-uri (conj (str "redirect_uri=" (url-encode redirect-uri)))
+                   true (conj "state=intask-auth"))
+          full-url (str endpoint "?" (str/join "&" params))]
+      (str "\n  " (jansi/a :faint "ブラウザで開く:") "\n\n"
+           "  " full-url "\n\n"
+           "  " (jansi/a :faint (str "Scopes: " scope-str))
+           (when (:codeChallengeMethod challenge)
+             (str "\n  " (jansi/a :faint (str "PKCE: " (:codeChallengeMethod challenge)))))
+           (when (:tokenEndpoint challenge)
+             (str "\n  " (jansi/a :faint (str "Token Endpoint: " (:tokenEndpoint challenge)))))))))
+
 (defn- format-send-result
   "Format a message/send result for display.
    Result can be a Task (with :status, :artifacts) or a Message (with :parts, :role).
@@ -209,11 +249,8 @@
                                        (filter #(= "data" (:kind %)))
                                        first :data :authChallenge)]
                 (str "\n" (jansi/fg :yellow "認証が必要です")
-                     (when challenge
-                       (str "\n\n"
-                            "  Authorization Endpoint: " (:authorizationEndpoint challenge)
-                            "\n  Scopes: " (:scopes challenge)))
-                     "\n\n" (jansi/a :faint "トークン取得後: /auth <access_token> で再送してください") "\n")))
+                     (format-auth-challenge challenge)
+                     "\n" (jansi/a :faint "トークン取得後: /auth <access_token> で再送してください") "\n")))
             (when-let [msg (get-in result [:status :message])]
               (let [text (if (map? msg)
                            (extract-text-parts (:parts msg))
@@ -277,10 +314,7 @@
                                  (filter #(= "data" (:kind %)))
                                  first :data :authChallenge)]
           (str (jansi/fg :yellow "🔐 認証が必要です")
-               (when challenge
-                 (str "\n"
-                      "  Authorization Endpoint: " (:authorizationEndpoint challenge)
-                      "\n  Scopes: " (:scopes challenge)))
+               (format-auth-challenge challenge)
                "\n" (jansi/a :faint "トークン取得後: /auth <access_token> で再送してください")))
         "failed" (str (jansi/a :faint (str "✗ " state))
                       (when-let [msg (get-in data [:status :message])]

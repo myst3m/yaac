@@ -77,15 +77,31 @@
         input (try (.readLine reader) (catch Exception _ nil))]
     (contains? #{"y" "yes"} (some-> input str/lower-case str/trim))))
 
+(def spin-frames ["⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏"])
+
 (defn spin
   "Print a spinner message. Use (spin) to clear."
   ([] (print "\r\033[K") (flush))
   ([msg] (print (str "\r⠿ " msg)) (flush)))
 
 (defmacro with-spin
-  "Execute body while showing a spinner message."
+  "Execute body while showing an animated spinner message."
   [msg & body]
-  `(try
-     (spin ~msg)
-     ~@body
-     (finally (spin))))
+  `(let [running# (volatile! true)
+         t# (Thread.
+              (fn []
+                (loop [i# 0]
+                  (when @running#
+                    (print (str "\r" (nth spin-frames (mod i# 10)) " " ~msg))
+                    (flush)
+                    (Thread/sleep 80)
+                    (recur (inc i#))))))]
+     (.setDaemon t# true)
+     (.start t#)
+     (try
+       (let [result# (do ~@body)]
+         result#)
+       (finally
+         (vreset! running# false)
+         (try (.join t# 200) (catch Exception _#))
+         (spin)))))
