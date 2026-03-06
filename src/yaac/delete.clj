@@ -127,6 +127,12 @@
           ""
           "# Clear all resources from organization"
           "  > yaac clear org T1"
+          ""
+          "# Clear all except gateways"
+          "  > yaac clear org T1 --except gws"
+          ""
+          "# Clear all except gateways and apps"
+          "  > yaac clear org T1 --except gws,apps"
           ""]
          (str/join \newline))))
 
@@ -142,7 +148,8 @@
               ["-M" "--managed" "For Managed Flex Gateway"]
               ["-t" "--type TYPE" "Alert type: api, app, or server"]])
 
-(def clear-options [[nil  "--dry-run"  "Show items without deleting"]])
+(def clear-options [[nil  "--dry-run"  "Show items without deleting"]
+                    [nil  "--except TYPES" "Comma-separated resource types to exclude (apps,apis,gws,sgs,assets)"]])
 
 ;; Forward declarations
 (declare -delete-api-instance-by-id -delete-asset-by-id)
@@ -531,22 +538,30 @@
 (defn clear-organization
   "Clear resources (apps, apis, gateways, secret-groups, assets) from org without deleting the org itself.
    RTF and Private Spaces are NOT deleted."
-  [{:keys [args dry-run]
+  [{:keys [args dry-run except]
     [org] :args
     :as opts}]
   (if-not org
     (throw (e/invalid-arguments "Org not specified" :args args))
-    (let [{:keys [apps apis gws sgs assets] :as resources} (-collect-org-resources org)]
+    (let [except-set (when except
+                       (into #{} (map str/trim) (str/split except #",")))
+          {:keys [apps apis gws sgs assets] :as resources} (-collect-org-resources org)
+          resources (cond-> (dissoc resources :pss :rtfs)
+                     (contains? except-set "apps")   (dissoc :apps)
+                     (contains? except-set "apis")   (dissoc :apis)
+                     (contains? except-set "gws")    (dissoc :gws)
+                     (contains? except-set "sgs")    (dissoc :sgs)
+                     (contains? except-set "assets") (dissoc :assets))]
       (if dry-run
         ;; Dry-run: show what would be deleted
-        [{:extra {:org org :action "dry-run"
-                  :apps (mapv :name apps)
-                  :apis (mapv :asset-id apis)
-                  :gws (mapv :name gws)
-                  :sgs (mapv :name sgs)
-                  :assets (mapv :asset-id assets)}}]
+        [{:extra (cond-> {:org org :action "dry-run"}
+                   (:apps resources)   (assoc :apps (mapv :name (:apps resources)))
+                   (:apis resources)   (assoc :apis (mapv :asset-id (:apis resources)))
+                   (:gws resources)    (assoc :gws (mapv :name (:gws resources)))
+                   (:sgs resources)    (assoc :sgs (mapv :name (:sgs resources)))
+                   (:assets resources) (assoc :assets (mapv :asset-id (:assets resources))))}]
         ;; Actually delete resources (but not org, not RTF, not PS)
-        (let [results (-delete-org-resources org (dissoc resources :pss :rtfs))]
+        (let [results (-delete-org-resources org resources)]
           (if (empty? results)
             [{:extra {:org org :action "clear" :message "No resources to clear"}}]
             results))))))
