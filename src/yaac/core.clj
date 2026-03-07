@@ -2180,7 +2180,7 @@
    
    
    ;; Get envs
-   ["|" {:fields [:name [:id :fmt short-uuid] :type]
+   ["|" {:fields [:name :id :type]
          :handler get-environments}
     ["env"]
     ["env|{*args}"]
