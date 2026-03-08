@@ -5,7 +5,7 @@
   (:import [java.util.jar JarFile]))
 
 (def lib 'io.gitlab.myst3m/yaac)
-(def version "0.9.1")
+(def version "0.9.2")
 (def class-dir "target/classes")
 (def uber-file (format "target/%s-%s.jar" (name lib) version))
 (def native-image-name (format "target/%s-%s" (name lib) version))
