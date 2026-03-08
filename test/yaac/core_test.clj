@@ -6,7 +6,7 @@
 
 
 ;; Required to store credentials to .yaac/credentials like below
-;; {"c2":	
+;; {"c2":
 ;;  {"client_id":"your id",
 ;;   "client_secret":"your secret",
 ;;   "grant_type":"client_credentials"}}
@@ -29,7 +29,7 @@
 
 (deftest get-test
   (testing "get org"
-    (is (map? (first (yc/get-organizations)))))
+    (is (map? (first (yc/get-organizations {})))))
   (testing "get environment"
     (is (map? (first (yc/get-environments {:args ["T1"]})))))
   (testing "get app"
@@ -43,11 +43,6 @@
   (testing "get environment - failed"
     (is (= {:extra {:status 1000, :message "Not found organization"}, :state 1000}
            (try (yc/get-environments {:args ["NOORG"]}) (catch Exception e (ex-data e))))))
-  (testing "get app - failed"
-    (are [org env]
-        (= {:extra {:status 1000, :message "Not found organization"}, :state 1000}
-           (try-wrap (yc/get-deployed-applications {:args [org env]})))
-      "T1" "NOENV"
-      "NOORG" "NOENV")
-))
-
+  (testing "get app - failed (NOORG)"
+    (is (thrown-with-msg? Exception #"Not found organization"
+          (yc/get-deployed-applications {:args ["NOORG" "NOENV"]})))))
