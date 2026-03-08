@@ -116,14 +116,14 @@ yaac deploy manifest deploy.yaml --dry-run
 # GraalVM 25+が必要
 git clone https://github.com/myst3m/yaac && cd yaac
 clj -T:build native-image
-cp target/yaac-0.9.1 ~/.local/bin/yaac
+cp target/yaac-0.9.2 ~/.local/bin/yaac
 ```
 
 ### Uberjar
 
 ```bash
 clj -T:build uber
-java --enable-native-access=ALL-UNNAMED -jar target/yaac-0.9.1.jar
+java --enable-native-access=ALL-UNNAMED -jar target/yaac-0.9.2.jar
 ```
 
 ### Bash補完
