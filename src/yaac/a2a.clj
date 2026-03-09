@@ -752,7 +752,7 @@
    ["|init|{*args}" {:handler (with-session a2a-init)
                       :fields [:url :agent-name :version]}]
    ["|send|{*args}" {:handler (with-session a2a-send false)
-                      :output-format :raw}]
+                      :output-format :raw :raw-args true}]
    ["|task|{*args}" {:handler (with-session a2a-get-task false)
                       :fields [:task-id :status :context-id]}]
    ["|cancel|{*args}" {:handler (with-session a2a-cancel-task false)

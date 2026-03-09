@@ -15,7 +15,7 @@
             [taoensso.timbre :as log]
             [zeph.client :as http]
             [reitit.core :as r]
-            [yaac.core :refer [*org* *env* parse-response default-headers short-uuid org->id env->id api->id org->name ps->id conn->id load-session! gen-url assign-connected-app-scopes connected-app->id -get-root-organization -get-client-provider client-provider->id -get-api-upstreams -patch-api-upstream -get-api-policy -patch-api-policy policy-name->id] :as yc]
+            [yaac.core :refer [*org* *env* parse-response default-headers short-uuid org->id env->id api->id org->name ps->id conn->id load-session! gen-url assign-connected-app-scopes connected-app->id -get-root-organization -get-client-provider client-provider->id -get-api-upstreams -patch-api-upstream -get-api-policy -patch-api-policy -patch-api-policy-state policy-name->id] :as yc]
             [yaac.error :as e]
             [clojure.string :as str]
             [clojure.tools.cli :refer [parse-opts]]
@@ -46,7 +46,7 @@
              "  - connected-app <name-or-client-id> --scopes ... --org-scopes ..."
              "  - client-provider <name-or-id> --name ... --authorize-url ..."
              "  - upstream [org] [env] <api> --upstream-uri <uri>"
-             "  - policy [org] [env] <api> <policy-name> --jwks-url <url>"
+             "  - policy [org] [env] <api> <policy-name> --jwks-url <url> | --config <file> | --enable | --disable"
              ""
              "Keys:"
              "  app"
@@ -168,6 +168,8 @@
                :id :jwks-url]
               [nil "--config FILE" "JSON config file for policy configurationData"
                :id :config]
+              [nil "--enable" "Enable a disabled policy"]
+              [nil "--disable" "Disable a policy"]
               ["-L" "--otel-endpoint URL" "OTLP endpoint URL (auto-sets all OTLP properties)"
                :id :otel-endpoint]])
 
@@ -481,30 +483,43 @@
 
 ;; API Policy update
 (defn update-api-policy
-  "Update API policy configuration by policy name (asset-id)"
-  [{:keys [args jwks-url config] :as opts}]
+  "Update API policy configuration or state (enable/disable) by policy name (asset-id)"
+  [{:keys [args jwks-url config enable disable] :as opts}]
   (let [[policy-name api env org] (reverse args)
         org (or org *org*)
         env (or env *env*)]
     (when-not (and org env api policy-name)
       (throw (e/invalid-arguments "Org, Env, API and policy-name need to be specified" {:args args})))
-    (when-not (or jwks-url config)
-      (throw (e/invalid-arguments "At least one policy option (--jwks-url or --config FILE) is required" opts)))
-    (if-let [policy-id (policy-name->id org env api policy-name)]
-      (let [updated-config (if config
-                             ;; --config FILE: full replace with JSON file contents
-                             (json/read-value (slurp config))
-                             ;; Legacy: differential update
-                             (let [current-policy (-get-api-policy org env api policy-id)
-                                   current-config (:configuration-data current-policy)]
-                               (cond-> current-config
-                                 jwks-url (assoc :jwks-url jwks-url))))]
-        (-patch-api-policy org env api policy-id updated-config)
-        [{:extra {:api-id api
-                  :policy-name policy-name
-                  :policy-id policy-id
-                  :status "updated"}}])
-      (throw (e/no-item (str "Policy '" policy-name "' not found for API " api) {:api api :policy-name policy-name})))))
+    (when (and enable disable)
+      (throw (e/invalid-arguments "Cannot use both --enable and --disable" opts)))
+    (when-not (or jwks-url config enable disable)
+      (throw (e/invalid-arguments "At least one option (--jwks-url, --config, --enable, or --disable) is required" opts)))
+    (let [;; Accept numeric policy ID directly, or resolve by name
+          policy-id (or (try (Long/parseLong policy-name) (catch Exception _ nil))
+                        (policy-name->id org env api policy-name))]
+      (if policy-id
+        (if (or enable disable)
+          ;; Enable/Disable branch
+          (do (-patch-api-policy-state org env api policy-id (boolean disable))
+              [{:extra {:api-id api
+                        :policy-name policy-name
+                        :policy-id policy-id
+                        :status (if disable "disabled" "enabled")}}])
+          ;; Configuration update branch
+          (let [updated-config (if config
+                                 ;; --config FILE: full replace with JSON file contents
+                                 (json/read-value (slurp config))
+                                 ;; Legacy: differential update
+                                 (let [current-policy (-get-api-policy org env api policy-id)
+                                       current-config (:configuration-data current-policy)]
+                                   (cond-> current-config
+                                     jwks-url (assoc :jwks-url jwks-url))))]
+            (-patch-api-policy org env api policy-id updated-config)
+            [{:extra {:api-id api
+                      :policy-name policy-name
+                      :policy-id policy-id
+                      :status "updated"}}]))
+        (throw (e/no-item (str "Policy '" policy-name "' not found for API " api) {:api api :policy-name policy-name}))))))
 
 (def route
   (for [op ["update" "upd"]]
@@ -556,5 +571,5 @@
                          :handler update-api-upstream}]
    ;; API Policy
    ["|policy" {:help true}]
-     ["|policy|{*args}" {:fields [[:extra :api-id] [:extra :policy-name] [:extra :policy-id] [:extra :status]]
-                         :handler update-api-policy}]]))
+   ["|policy|{*args}" {:fields [[:extra :api-id] [:extra :policy-name] [:extra :policy-id] [:extra :status]]
+                       :handler update-api-policy}]]))

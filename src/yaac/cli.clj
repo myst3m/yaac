@@ -108,7 +108,7 @@
 (def cli-global-options-brief
   "  Common: -o FORMAT, -H, -d, -V, -X, -Z, -1  (use --help-all for details)")
 
-(defn ext-parse-opts [{:keys [args] :as opts} option-schema & {:keys [global-opts]}]
+(defn ext-parse-opts [{:keys [args] :as opts} option-schema & {:keys [global-opts raw-args]}]
   (let [;; Parse with all options for actual option values
         {:keys [summary options arguments] :as matched-item} (parse-opts args option-schema)
         ;; Generate command-specific summary (exclude global options)
@@ -120,16 +120,20 @@
         help-all? (or (:help-all options) (:help-all global-opts))
         brief-summary (str (when (seq cmd-summary) (str cmd-summary "\n"))
                            cli-global-options-brief)]
-    (->> arguments
-         (map #(str/split % #"=" 2))
-         (map (fn [[k v]]
-                [(if v (keyword (str k)) (str k))
-                 (some-> v (str/split #"[,]"))]))
-         (reduce (fn [r [k v]]
-                   (if (seq (filter seq v))
-                     (assoc r k v)
-                     (update r :args (comp vec conj) (name k)))) {})
-         (into {})
+    (->> (if raw-args
+           ;; raw-args mode: treat all positional arguments as plain text (no key=value parsing)
+           {:args (vec arguments)}
+           ;; normal mode: split by = and treat as key-value pairs
+           (->> arguments
+                (map #(str/split % #"=" 2))
+                (map (fn [[k v]]
+                       [(if v (keyword (str k)) (str k))
+                        (some-> v (str/split #"[,]"))]))
+                (reduce (fn [r [k v]]
+                          (if (seq (filter seq v))
+                            (assoc r k v)
+                            (update r :args (comp vec conj) (name k)))) {})
+                (into {})))
          (concat options)
          (conj {:summary (if help-all?
                            (:summary matched-item)
@@ -264,11 +268,11 @@
                            (or (r/match-by-path router (str/join "|" (map encode-path-segment a-args)))
                                (r/match-by-path router (str/join "|" (map encode-path-segment (take 1 a-args))))))]
     (let [{:keys [data path-params path]} matched-route
-          {:keys [handler options usage help no-token]} data
+          {:keys [handler options usage help no-token raw-args]} data
           {:keys [args] :as params} path-params
           cooked-params (cond-> path-params
                           :always  (-> (update :args #(some-> % (str/split #"\|"))))
-                          :always (ext-parse-opts (concat options cli-global-options) :global-opts global-opts)
+                          :always (ext-parse-opts (concat options cli-global-options) :global-opts global-opts :raw-args raw-args)
                           :always (merge global-opts)  ;; merge global options
                           (:help data) (assoc :help (:help data)) ;; merge
                           (:output-format data) (assoc :output-format (:output-format data))) ;;merge

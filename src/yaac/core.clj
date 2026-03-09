@@ -1747,22 +1747,26 @@
       (< 1 (count xs)) (throw (e/multiple-connections "Multiple connection found")))))
 
 
-(defn -get-api-policies [org env api]
-  (let [org-id (org->id (or org *org*))
-        env-id (env->id org-id (or env *env*))
-        api-id (api->id org-id env-id api)]
-    (-> @(http/get (format (gen-url "/apimanager/api/v1/organizations/%s/environments/%s/apis/%s/policies")
-                          org-id env-id api-id)
-                  {:headers (default-headers)})
-        (parse-response)
-        :body
-        :policies
-        (add-extra-fields :id :policy-id
-                          :asset-id (comp :asset-id :implementation-asset)
-                          :version (comp :asset-version :template)
-                          :type "regular"
-                          :order :order
-                          :config :configuration-data))))
+(defn -get-api-policies
+  ([org env api] (-get-api-policies org env api false))
+  ([org env api include-disabled?]
+   (let [org-id (org->id (or org *org*))
+         env-id (env->id org-id (or env *env*))
+         api-id (api->id org-id env-id api)
+         url (cond-> (format (gen-url "/apimanager/api/v1/organizations/%s/environments/%s/apis/%s/policies")
+                             org-id env-id api-id)
+               include-disabled? (str "?includeDisabled=true"))]
+     (-> @(http/get url {:headers (default-headers)})
+         (parse-response)
+         :body
+         :policies
+         (add-extra-fields :id :policy-id
+                           :asset-id (comp :asset-id :implementation-asset)
+                           :version (comp :asset-version :template)
+                           :type "regular"
+                           :order :order
+                           :disabled :disabled
+                           :config :configuration-data)))))
 
 (defn -get-automated-api-policies [org env]
   (let [org-id (org->id (or org *org*))
@@ -1784,9 +1788,9 @@
                          [org env api] :args}]
   (let [[api env org] (reverse args)]
     (if api
-      ;; Existing: get policies applied to an API instance
+      ;; Existing: get policies applied to an API instance (include disabled)
       (->> (on-threads *no-multi-thread*
-             (-get-api-policies org env api)
+             (-get-api-policies org env api true)
              (-get-automated-api-policies org env))
            (filter #((set (or (seq types) ["automated" "regular"])) (-> % :extra :type))))
       ;; Exchange search: args 0-1 (search term optional)
@@ -1849,10 +1853,23 @@
         (parse-response)
         :body)))
 
+(defn -patch-api-policy-state
+  "Enable or disable an API policy"
+  [org env api policy-id disabled?]
+  (let [org-id (org->id (or org *org*))
+        env-id (env->id org-id (or env *env*))
+        api-id (api->id org-id env-id api)]
+    (-> @(http/patch (format (gen-url "/apimanager/api/v1/organizations/%s/environments/%s/apis/%s/policies/%s")
+                            org-id env-id api-id policy-id)
+                    {:headers (default-headers)
+                     :body (edn->json {:disabled disabled?})})
+        (parse-response)
+        :body)))
+
 (defn policy-name->id
-  "Convert policy asset-id (name) to policy-id"
+  "Convert policy asset-id (name) to policy-id. Searches both enabled and disabled policies."
   [org env api policy-name]
-  (let [policies (-get-api-policies org env api)]
+  (let [policies (-get-api-policies org env api true)]
     (->> policies
          (filter #(= policy-name (-> % :extra :asset-id)))
          first
@@ -2358,7 +2375,7 @@
    ["|" {:handler get-api-policies
           :fields [[:extra :asset-id] [:extra :version] [:extra :group-id]
                    [:extra :id :fmt short-uuid] [:extra :type] [:extra :order]
-                   [:extra :config]]}
+                   [:extra :disabled] [:extra :config]]}
     ["policy"]
     ["policy|{*args}"]
     ["pol"]
