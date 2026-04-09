@@ -4,7 +4,7 @@
   (:import [com.dylibso.chicory.wasm.types Value]
            [com.dylibso.chicory.wasm Parser]
            [com.dylibso.chicory.runtime  Module ExportFunction Instance])
-  (:require [yaac.core :as yc :refer [*org* *env* *deploy-target* *no-cache* *no-multi-thread* *console* global-base-url]]
+  (:require [yaac.core :as yc :refer [*org* *env* *deploy-target* *no-cache* *no-multi-thread* *quiet* *console* global-base-url]]
             [yaac.util :as util]
             [reitit.core :as r]
             [clojure.string :as str]
@@ -91,6 +91,8 @@
                           :default false]
                          ["-U" "--base-url <url>" "Base URL."
                           :default "https://anypoint.mulesoft.com"]
+                         ["-q" "--quiet" "Suppress processing spinner"
+                          :default false]
                          ["-P" "--progress" "Display progress"
                           :default false]
                          ["-V" "--http-trace" "Show HTTP request and response flow"
@@ -106,7 +108,7 @@
 
 ;; Brief summary of global options (one-liner)
 (def cli-global-options-brief
-  "  Common: -o FORMAT, -H, -d, -V, -X, -Z, -1  (use --help-all for details)")
+  "  Common: -o FORMAT, -H, -d, -q, -V, -X, -Z, -1  (use --help-all for details)")
 
 (defn ext-parse-opts [{:keys [args] :as opts} option-schema & {:keys [global-opts raw-args]}]
   (let [;; Parse with all options for actual option values
@@ -497,6 +499,7 @@
           (binding [*org* (:organization default-context)
                     *env* (:environment default-context)
                     *no-cache* (:no-cache options)
+                    *quiet* (:quiet options)
                     *deploy-target* (:deploy-target default-context)]
             (yaac.a2a/a2a-console (merge {:args (vec arguments)} options))))
         (catch clojure.lang.ExceptionInfo e (print-explain e :debug (:debug options)))
@@ -516,6 +519,7 @@
         (binding [*org* (:organization default-context)
                   *env* (:environment default-context)
                   *no-cache* (:no-cache options)
+                  *quiet* (:quiet options)
                   *deploy-target* (:deploy-target default-context)]
           (log/debug "default:" *org* *env*)
           (apply yaac.nrepl/cli (rest arguments)))
@@ -530,6 +534,7 @@
                   *env* (:environment default-context)
                   *deploy-target* (:deploy-target default-context)
                   *no-cache* (:no-cache options)
+                  *quiet* (:quiet options)
                   *no-multi-thread* (:http-trace-detail options)
                   zeph-client/*force-http1* (:http1 options)
                   zeph-client/*trace* (:http-trace options)

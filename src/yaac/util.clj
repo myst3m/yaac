@@ -87,21 +87,23 @@
 (defmacro with-spin
   "Execute body while showing an animated spinner message."
   [msg & body]
-  `(let [running# (volatile! true)
-         t# (Thread.
-              (fn []
-                (loop [i# 0]
-                  (when @running#
-                    (print (str "\r" (nth spin-frames (mod i# 10)) " " ~msg))
-                    (flush)
-                    (Thread/sleep 80)
-                    (recur (inc i#))))))]
-     (.setDaemon t# true)
-     (.start t#)
-     (try
-       (let [result# (do ~@body)]
-         result#)
-       (finally
-         (vreset! running# false)
-         (try (.join t# 200) (catch Exception _#))
-         (spin)))))
+  `(if yaac.core/*quiet*
+     (do ~@body)
+     (let [running# (volatile! true)
+           t# (Thread.
+                (fn []
+                  (loop [i# 0]
+                    (when @running#
+                      (print (str "\r" (nth spin-frames (mod i# 10)) " " ~msg))
+                      (flush)
+                      (Thread/sleep 80)
+                      (recur (inc i#))))))]
+       (.setDaemon t# true)
+       (.start t#)
+       (try
+         (let [result# (do ~@body)]
+           result#)
+         (finally
+           (vreset! running# false)
+           (try (.join t# 200) (catch Exception _#))
+           (spin))))))

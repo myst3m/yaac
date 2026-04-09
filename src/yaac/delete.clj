@@ -935,6 +935,29 @@
                (dissoc :body)
                (assoc :deleted-rtf rtf-name))])))))
 
+(defn delete-vpn [{:keys [args] :as opts}]
+  (let [[org ps conn-name] args]
+    (when-not (and org ps conn-name)
+      (throw (e/invalid-arguments "Usage: yaac delete vpn <org> <private-space> <connection-name-or-id>" {:args args})))
+    (let [org-id (org->id org)
+          ps-id (ps->id org-id ps)
+          ;; Find connection ID by name or ID
+          connections (-> @(http/get (format (gen-url "/runtimefabric/api/organizations/%s/privatespaces/%s/connections") org-id ps-id)
+                                    {:headers (default-headers)})
+                         (parse-response)
+                         :body)
+          conn (first (filter #(or (= conn-name (:name %))
+                                   (= conn-name (:id %))
+                                   (str/starts-with? (str (:id %)) conn-name))
+                              connections))]
+      (when-not conn
+        (throw (e/no-item "VPN connection not found" {:org org :ps ps :name conn-name})))
+      [(-> @(http/delete (format (gen-url "/runtimefabric/api/organizations/%s/privatespaces/%s/connections/%s") org-id ps-id (:id conn))
+                         {:headers (default-headers)})
+           (parse-response)
+           (dissoc :body)
+           (assoc :deleted-vpn (:name conn)))])))
+
 (defn delete-private-space [{:keys [args all dry-run force] :as opts}]
   (let [[ps-name org] (reverse args)
         org (or org *org*)]
@@ -1044,6 +1067,9 @@
       ["|runtime-fabric"]
       ["|runtime-fabric|{*args}" {:fields [:status :deleted-rtf :error]
                                    :handler delete-runtime-fabric}]
+      ["|vpn"]
+      ["|vpn|{*args}" {:fields [:status :deleted-vpn :error]
+                       :handler delete-vpn}]
       ["|ps"]
       ["|ps|{*args}" {:fields [:status :deleted-ps :error]
                       :handler delete-private-space}]

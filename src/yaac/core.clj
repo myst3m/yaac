@@ -40,6 +40,7 @@
 (def ^:dynamic *deploy-target*)
 (def ^:dynamic *no-cache* false)
 (def ^:dynamic *no-multi-thread*)
+(def ^:dynamic *quiet* false)
 (def ^:dynamic *console*)
 (def mule-business-group-id "68ef9520-24e9-4cf2-b2f5-620025690913")
 (def global-base-url "https://anypoint.mulesoft.com")
@@ -2370,7 +2371,9 @@
     ["conn"]
     ["conn|{*args}"]
     ["connection"]
-    ["connection|{*args}"]]
+    ["connection|{*args}"]
+    ["vpn"]
+    ["vpn|{*args}"]]
 
    ["|" {:handler get-api-policies
           :fields [[:extra :asset-id] [:extra :version] [:extra :group-id]

@@ -46,6 +46,7 @@
              ""
              " - organization"
              " - environment"
+             " - vpn"
              " - private-space (ps)"
              " - api"
              " - policy"
@@ -87,6 +88,9 @@
            ""
            "# Create Private Space with network"
            "  > yaac create ps T1 my-ps --region ap-northeast-1 --cidr-block 10.0.0.0/24"
+           ""
+           "# Create VPN connection"
+           "  > yaac create vpn MuleSoft rootps my-vpn --remote-ip 1.2.3.4 --routes 192.168.0.0/24 --psk1 key1 --psk2 key2"
            ""])
          (str/join \newline))))
 
@@ -117,6 +121,14 @@
               [nil "--client-secret SECRET" "Primary client secret"]
               [nil "--timeout MS" "Client request timeout in ms (default: 5000)"]
               [nil "--allow-untrusted-certs" "Allow untrusted certificates"]
+              ;; VPN options
+              [nil "--remote-ip IP" "Remote (your side) public IP address"]
+              [nil "--routes CIDRS" "Static routes CIDR (comma-separated, e.g., 192.168.11.0/24)"]
+              [nil "--local-asn ASN" "Local ASN (default: 64512)"]
+              [nil "--psk1 KEY" "Pre-shared key for tunnel 1"]
+              [nil "--psk2 KEY" "Pre-shared key for tunnel 2"]
+              [nil "--ptp-cidr1 CIDR" "Point-to-point CIDR for tunnel 1 (e.g., 169.254.100.0/30)"]
+              [nil "--ptp-cidr2 CIDR" "Point-to-point CIDR for tunnel 2 (e.g., 169.254.100.4/30)"]
               ;; Private Space options
               [nil "--region REGION" "AWS region (e.g., ap-northeast-1, us-east-1)"]
               [nil "--cidr-block CIDR" "CIDR block (e.g., 10.0.0.0/24)"]
@@ -811,6 +823,39 @@
                              :name :name
                              :type (comp :name :type)))))
 
+(defn create-vpn
+  "Create a VPN connection in a CloudHub 2.0 Private Space."
+  [{:keys [args remote-ip routes local-asn psk1 psk2 ptp-cidr1 ptp-cidr2]
+    :as opts}]
+  (let [[org ps vpn-name] args
+        org (or org *org*)]
+    (when-not (and org ps vpn-name)
+      (throw (e/invalid-arguments "Usage: yaac create vpn <org> <private-space> <name> --remote-ip IP --routes CIDR" {:args args})))
+    (when-not remote-ip
+      (throw (e/invalid-arguments "--remote-ip is required" {:args args})))
+    (let [org-id (org->id org)
+          ps-id (ps->id org-id ps)
+          static-routes (when routes (str/split routes #","))
+          tunnels (cond-> []
+                    true (conj (cond-> {:startup-action "add"}
+                                 psk1 (assoc :psk psk1)
+                                 ptp-cidr1 (assoc :ptp-cidr ptp-cidr1)))
+                    true (conj (cond-> {:startup-action "add"}
+                                 psk2 (assoc :psk psk2)
+                                 ptp-cidr2 (assoc :ptp-cidr ptp-cidr2))))
+          body {:name vpn-name
+                :vpns [(cond-> {:remote-ip-address remote-ip
+                                :vpn-tunnels tunnels}
+                         local-asn (assoc :local-asn local-asn)
+                         (not local-asn) (assoc :local-asn "64512")
+                         static-routes (assoc :static-routes static-routes))]}
+          result (-> @(http/post (format (gen-url "/runtimefabric/api/organizations/%s/privatespaces/%s/connections") org-id ps-id)
+                                {:headers (default-headers)
+                                 :body (edn->json :camel body)})
+                     (parse-response)
+                     :body)]
+      (yc/add-extra-fields result :name :name :id :id :status :status))))
+
 (defn create-private-space
   "Create a Private Space in CloudHub 2.0.
    If region and cidr-block are specified, configures the network immediately."
@@ -864,6 +909,9 @@
             :fields [[:body :name] [:body :id :fmt short-uuid] [:body :type]]}
       ["env|{*args}" ]
       ["environement|{*args}" ]]
+     ["|" {:handler create-vpn
+           :fields [[:extra :id :fmt short-uuid] [:extra :name] [:extra :status]]}
+      ["vpn|{*args}"]]
      ["|" {:handler create-private-space
            :fields [[:id :fmt short-uuid] [:extra :name] [:extra :status]]}
       ["ps|{*args}"]
