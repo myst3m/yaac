@@ -457,19 +457,30 @@
         env-id (env->id org-id (or env *env*))
         api-id (api->id org-id env-id api)
         ;; When --config is a full body (contains configurationData), policy arg is optional
-        config-data (when (:config opts) (gen-policy-config (or policy "_") opts))
+        config-data (when (or (:config opts) (seq (extract-plus-params opts)))
+                      (gen-policy-config (or policy (:asset opts) "_") opts))
         full-body? (and config-data (:full-body (meta config-data)))
-        ;; Support full policy spec (groupId/assetId/version) or just policy name
-        [group-id asset-id version] (if full-body?
-                                      ;; Full body mode: extract from config
+        ;; Resolve group/asset/version from -g/-a/-v, slash-separated, or full-body
+        [group-id asset-id version] (cond
+                                      full-body?
                                       [(get config-data "groupId")
                                        (get config-data "assetId")
                                        (get config-data "assetVersion")]
-                                      (if (and policy (str/includes? policy "/"))
-                                        (str/split policy #"/")
-                                        [nil policy nil]))
-        ;; --version override
-        version (or (:version opts) version)
+                                      ;; -g/-a/-v flags (consistent with upload/deploy)
+                                      (:asset opts)
+                                      [(:group opts) (:asset opts) (:version opts)]
+                                      ;; groupId/assetId/version slash format
+                                      (and policy (str/includes? policy "/"))
+                                      (str/split policy #"/")
+                                      :else
+                                      [nil policy nil])
+        ;; -v override
+        version (or version (when-let [v (:version opts)] (if (coll? v) (first v) v)))
+        ;; Resolve group name to ID (e.g., "MuleSoft" → mule-business-group-id)
+        group-id (when group-id
+                   (if (#{"MuleSoft" "mulesoft" "global"} group-id)
+                     yc/mule-business-group-id
+                     group-id))
         ;; If full spec provided, use it directly; otherwise search
         policy-info (if (and group-id asset-id version)
                       {:group-id group-id :asset-id asset-id :version version}
@@ -550,7 +561,8 @@
 (defn create-api-policy [{:keys [args]
                           [org env api policy] :args
                           :as opts}]
-  (let []
+  ;; policy can be nil when using -g/-a/-v or --config with full body
+  (let [policy (or policy (:asset opts))]
     (-create-api-policy org env api policy (dissoc opts :args))))
 
 
