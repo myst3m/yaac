@@ -307,35 +307,141 @@
             api-result)))))))
 
 
+(defn- coerce-schema-value
+  "Coerce a string value to the appropriate type based on JSON schema property definition."
+  [v prop-schema]
+  (let [t (:type prop-schema)]
+    (cond
+      (= t "boolean") (= v "true")
+      (= t "integer") (parse-long v)
+      (= t "number")  (Double/parseDouble v)
+      (= t "array")   (if (string? v) (json/read-value v) v)
+      :else v)))
+
+(defn- fetch-policy-schema
+  "Fetch policy configuration schema from Exchange."
+  [group-id asset-id version]
+  (let [url (if version
+              (format (gen-url "/exchange/api/v2/assets/%s/%s/%s") group-id asset-id version)
+              (format (gen-url "/exchange/api/v2/assets/%s/%s/asset") group-id asset-id))
+        asset-info (-> @(http/get url {:headers (default-headers)})
+                       (parse-response)
+                       :body)]
+    (when-let [schema-url (->> (:files asset-info)
+                               (filter #(and (= (:classifier %) "schema")
+                                             (= (:packaging %) "json")))
+                               first
+                               :external-link)]
+      (-> @(http/get schema-url {})
+          (parse-response)
+          :body))))
+
+(defn- build-config-from-schema
+  "Build configurationData by merging Exchange schema defaults with user-provided +key=value params.
+   1. Fetch schema from Exchange for default values and type info
+   2. Start with all schema defaults
+   3. Overlay user params (auto-coercing types based on schema)
+   Schema property keys are kebab-case, API Manager expects camelCase."
+  [group-id asset-id version user-params]
+  (let [schemas (fetch-policy-schema group-id asset-id version)
+        schema (when schemas (if (vector? schemas) (first schemas) schemas))
+        props (when schema (get schema "properties" (:properties schema)))
+        ;; Fallback defaults for required fields that have no schema default
+        ;; These match what the API Manager UI sends
+        required-fallbacks {"jwtExpression"        "#[attributes.headers['jwt']]"
+                            "signingKeyLength"     256
+                            "textKey"              "your-(256|384|512)-bit-secret"
+                            "customKeyExpression"  "#[authentication.properties['key_to_your_public_pem_certificate']]"
+                            "clientIdExpression"   "#[vars.claimSet.client_id]"
+                            "mandatoryAudClaim"    false
+                            "supportedAudiences"   "aud.example.com"
+                            "claimsToHeaders"      []}
+        ;; Build base config from schema defaults (kebab → camelCase)
+        base-config (if props
+                      (reduce-kv
+                       (fn [config k prop]
+                         (let [camel-key (csk/->camelCaseString k)
+                               default-val (get prop "default" (get prop :default ::missing))]
+                           (if (not= default-val ::missing)
+                             (assoc config camel-key default-val)
+                             ;; Use required-fallback if available
+                             (if-let [fb (get required-fallbacks camel-key)]
+                               (assoc config camel-key fb)
+                               config))))
+                       ;; Start with fallbacks for required fields not in properties
+                       (select-keys required-fallbacks
+                                    (remove #(contains? (set (map csk/->camelCaseString (keys props))) %) (keys required-fallbacks)))
+                       props)
+                      required-fallbacks)
+        ;; Auto-coerce a string value
+        auto-coerce (fn [s prop]
+                      (if prop
+                        (coerce-schema-value s prop)
+                        (cond
+                          (#{"true" "false"} s) (= s "true")
+                          (re-matches #"-?\d+" (str s)) (parse-long s)
+                          :else s)))]
+    ;; Overlay user-provided +key=value params
+    (reduce-kv
+     (fn [config k v]
+       (let [kebab-key (csk/->kebab-case-string k)
+             prop (when props (get props kebab-key (get props k)))]
+         (assoc config k (auto-coerce (first v) prop))))
+     base-config
+     user-params)))
+
+(defn- extract-plus-params
+  "Extract +key=value params from opts map. Returns {\"camelCaseKey\" [\"value\"]} map."
+  [opts]
+  (->> opts
+       (filter (fn [[k _]] (and (keyword? k) (str/starts-with? (name k) "+"))))
+       (map (fn [[k v]] [(subs (name k) 1) v]))  ;; strip leading +
+       (into {})))
+
 (defn- gen-policy-config [policy {:keys [config ip-expression ips
                                          delay-attempts maximum-requests queuing-limit expose-headers time-period-in-milliseconds delay-time-in-millis
                                          maximum-requests time-period-in-milliseconds
                                          ;; Circuit breaker options
                                          max-connections max-pending-requests max-requests max-retries max-connection-pools
-                                         ]}]
+                                         ]
+                                  :as opts}]
   (if config
     ;; --config FILE: read JSON file as configurationData (returns raw map with original camelCase keys)
-    (json/read-value (slurp config))
-    (condp = (keyword policy)
-      :ip-allowlist {:ip-expression (or (first ip-expression) "#[attributes.headers['x-forwarded-for']]"),
-                     :ips (or ips ["0.0.0.0/0"])}
-      :spike-control {:delay-attempts (or (some-> delay-attempts first parse-long) 1)
-                      :maximum-requests (or (some-> maximum-requests first parse-long) 1)
-                      :queuing-limit (or (some-> queuing-limit first parse-long) 5)
-                      :expose-headers (or (= (first expose-headers) "true") false)
-                      :time-period-in-milliseconds (or (some-> time-period-in-milliseconds first parse-long) 1000)
-                      :delay-time-in-millis (or (some-> delay-time-in-millis first parse-long) 1000)}
-      :rate-limiting {:rateLimits [{:maximumRequests (or (some-> maximum-requests first parse-long) 10)
-                                     :timePeriodInMilliseconds (or (some-> time-period-in-milliseconds first parse-long) 60000)}]
-                      :clusterizable true
-                      :exposeHeaders false}
-      :circuit-breaker {:thresholds (cond-> {}
-                                      max-connections (assoc :maxConnections (some-> max-connections first parse-long))
-                                      max-pending-requests (assoc :maxPendingRequests (some-> max-pending-requests first parse-long))
-                                      max-requests (assoc :maxRequests (some-> max-requests first parse-long))
-                                      max-retries (assoc :maxRetries (some-> max-retries first parse-long))
-                                      max-connection-pools (assoc :maxConnectionPools (some-> max-connection-pools first parse-long)))}
-      (throw (e/not-implemented (str "Policy '" policy "' requires --config FILE. Use 'yaac describe policy MuleSoft " policy "' to check the schema.") {:name policy})))))
+    ;; If the JSON contains "configurationData" key, it's a full request body (e.g., copied from API Manager UI)
+    ;; In that case, return it with a :_full-body marker so the caller sends it as-is
+    (let [parsed (json/read-value (slurp config))]
+      (if (contains? parsed "configurationData")
+        (with-meta parsed {:full-body true})
+        parsed))
+    ;; Check for +key=value inline params
+    (let [plus-params (extract-plus-params opts)]
+      (if (seq plus-params)
+        ;; Use +key=value params: return them as marker for schema-based config
+        (with-meta plus-params {:schema-params true})
+        ;; Legacy hardcoded policy configs
+        (condp = (keyword policy)
+          :ip-allowlist {:ip-expression (or (first ip-expression) "#[attributes.headers['x-forwarded-for']]"),
+                         :ips (or ips ["0.0.0.0/0"])}
+          :spike-control {:delay-attempts (or (some-> delay-attempts first parse-long) 1)
+                          :maximum-requests (or (some-> maximum-requests first parse-long) 1)
+                          :queuing-limit (or (some-> queuing-limit first parse-long) 5)
+                          :expose-headers (or (= (first expose-headers) "true") false)
+                          :time-period-in-milliseconds (or (some-> time-period-in-milliseconds first parse-long) 1000)
+                          :delay-time-in-millis (or (some-> delay-time-in-millis first parse-long) 1000)}
+          :rate-limiting {:rateLimits [{:maximumRequests (or (some-> maximum-requests first parse-long) 10)
+                                         :timePeriodInMilliseconds (or (some-> time-period-in-milliseconds first parse-long) 60000)}]
+                          :clusterizable true
+                          :exposeHeaders false}
+          :circuit-breaker {:thresholds (cond-> {}
+                                          max-connections (assoc :maxConnections (some-> max-connections first parse-long))
+                                          max-pending-requests (assoc :maxPendingRequests (some-> max-pending-requests first parse-long))
+                                          max-requests (assoc :maxRequests (some-> max-requests first parse-long))
+                                          max-retries (assoc :maxRetries (some-> max-retries first parse-long))
+                                          max-connection-pools (assoc :maxConnectionPools (some-> max-connection-pools first parse-long)))}
+          (throw (e/not-implemented (str "Policy '" policy "' requires --config FILE or +key=value params.\n"
+                                         "  Use 'yaac describe policy MuleSoft " policy "' to check the schema.\n"
+                                         "  Example: yaac create policy ORG ENV API " policy " +jwksUrl=https://... +skipClientIdValidation=true")
+                                    {:name policy})))))))
 
 ;; Outbound policies require different endpoint and upstream IDs
 (def outbound-policies #{"circuit-breaker"
@@ -350,71 +456,96 @@
   (let [org-id (org->id (or org *org*))
         env-id (env->id org-id (or env *env*))
         api-id (api->id org-id env-id api)
+        ;; When --config is a full body (contains configurationData), policy arg is optional
+        config-data (when (:config opts) (gen-policy-config (or policy "_") opts))
+        full-body? (and config-data (:full-body (meta config-data)))
         ;; Support full policy spec (groupId/assetId/version) or just policy name
-        [group-id asset-id version] (if (str/includes? policy "/")
-                                      (str/split policy #"/")
-                                      [nil policy nil])
+        [group-id asset-id version] (if full-body?
+                                      ;; Full body mode: extract from config
+                                      [(get config-data "groupId")
+                                       (get config-data "assetId")
+                                       (get config-data "assetVersion")]
+                                      (if (and policy (str/includes? policy "/"))
+                                        (str/split policy #"/")
+                                        [nil policy nil]))
         ;; --version override
         version (or (:version opts) version)
         ;; If full spec provided, use it directly; otherwise search
         policy-info (if (and group-id asset-id version)
                       {:group-id group-id :asset-id asset-id :version version}
-                      (let [policies (->> (yc/get-assets {:types ["policy"] :args [yc/mule-business-group-id]})
-                                          ;; Exact match for asset-id
-                                          (filter #(= policy (:asset-id %))))]
-                        (cond
-                          (= 0 (count policies)) (throw (e/no-item (str "No policy found: " policy)))
-                          (< 1 (count policies)) (throw (e/multiple-policies "Multiple policy found" {:extra policies}))
-                          :else (let [{:keys [asset-id group-id]} (first policies)
-                                      resolved-version (or version (:version (first policies)))]
-                                  {:group-id group-id :asset-id asset-id :version resolved-version}))))
+                      (if full-body?
+                        {:group-id (get config-data "groupId")
+                         :asset-id (get config-data "assetId")
+                         :version (get config-data "assetVersion")}
+                        (let [policies (->> (yc/get-assets {:types ["policy"] :args [yc/mule-business-group-id]})
+                                            ;; Exact match for asset-id
+                                            (filter #(= policy (:asset-id %))))]
+                          (cond
+                            (= 0 (count policies)) (throw (e/no-item (str "No policy found: " policy)))
+                            (< 1 (count policies)) (throw (e/multiple-policies "Multiple policy found" {:extra policies}))
+                            :else (let [{:keys [asset-id group-id]} (first policies)
+                                        resolved-version (or version (:version (first policies)))]
+                                    {:group-id group-id :asset-id asset-id :version resolved-version})))))
         is-outbound (or (:outbound opts) (outbound-policy? (:asset-id policy-info)))
-        config-data (gen-policy-config (:asset-id policy-info) opts)
-        use-raw-json (:config opts)]
+        config-data (or config-data (gen-policy-config (:asset-id policy-info) opts))
+        ;; If config-data has :schema-params metadata, resolve via Exchange schema
+        config-data (if (:schema-params (meta config-data))
+                      (build-config-from-schema (:group-id policy-info)
+                                                (:asset-id policy-info)
+                                                (:version policy-info)
+                                                config-data)
+                      config-data)
+        use-raw-json (or (:config opts) (:schema-params (meta config-data)) (map? config-data))]
 
-    (if is-outbound
-      ;; Outbound policy - use xapi endpoint with upstream IDs
-      (let [upstreams-resp (-get-api-upstreams org env api)
-            upstream-ids (mapv :id (:upstreams upstreams-resp))]
-        (when (empty? upstream-ids)
-          (throw (e/invalid-arguments "No upstreams found for API. Outbound policies require at least one upstream." {:api api})))
-        (-> @(http/post (format (gen-url "/apimanager/xapi/v1/organizations/%s/environments/%s/apis/%s/policies/outbound-policies") org-id env-id api-id)
+    ;; If config-data has :full-body metadata, it's a complete request body from API Manager UI
+    (let [full-body? (and (:config opts) (:full-body (meta config-data)))]
+      (if is-outbound
+        ;; Outbound policy - use xapi endpoint with upstream IDs
+        (let [upstreams-resp (-get-api-upstreams org env api)
+              upstream-ids (mapv :id (:upstreams upstreams-resp))]
+          (when (empty? upstream-ids)
+            (throw (e/invalid-arguments "No upstreams found for API. Outbound policies require at least one upstream." {:api api})))
+          (-> @(http/post (format (gen-url "/apimanager/xapi/v1/organizations/%s/environments/%s/apis/%s/policies/outbound-policies") org-id env-id api-id)
+                         {:headers (default-headers)
+                          :body (if full-body?
+                                  ;; Full body from UI: merge upstream IDs and send as-is
+                                  (json/write-value-as-string (assoc config-data "upstreamIds" upstream-ids))
+                                  (if use-raw-json
+                                    (json/write-value-as-string
+                                     {"configurationData" config-data
+                                      "assetId" (:asset-id policy-info)
+                                      "assetVersion" (:version policy-info)
+                                      "groupId" (:group-id policy-info)
+                                      "upstreamIds" upstream-ids})
+                                    (edn->json :camel
+                                               {:configuration-data config-data
+                                                :asset-id (:asset-id policy-info)
+                                                :asset-version (:version policy-info)
+                                                :group-id (:group-id policy-info)
+                                                :upstream-ids upstream-ids})))})
+              (parse-response)
+              :body))
+        ;; Inbound policy - use standard endpoint
+        (-> @(http/post (format (gen-url "/apimanager/api/v1/organizations/%s/environments/%s/apis/%s/policies") org-id env-id api-id)
                        {:headers (default-headers)
-                        :body (if use-raw-json
-                                ;; Raw JSON body to preserve camelCase keys from config file
-                                (json/write-value-as-string
-                                 {"configurationData" config-data
-                                  "assetId" (:asset-id policy-info)
-                                  "assetVersion" (:version policy-info)
-                                  "groupId" (:group-id policy-info)
-                                  "upstreamIds" upstream-ids})
-                                (edn->json :camel
-                                           {:configuration-data config-data
-                                            :asset-id (:asset-id policy-info)
-                                            :asset-version (:version policy-info)
-                                            :group-id (:group-id policy-info)
-                                            :upstream-ids upstream-ids}))})
+                        :body (if full-body?
+                                ;; Full body from UI: send as-is (includes configurationData, groupId, assetId, etc.)
+                                (json/write-value-as-string config-data)
+                                (if use-raw-json
+                                  (json/write-value-as-string
+                                   {"configurationData" config-data
+                                    "pointcutData" nil
+                                    "assetId" (:asset-id policy-info)
+                                    "assetVersion" (:version policy-info)
+                                    "groupId" (:group-id policy-info)})
+                                  (edn->json :camel
+                                             {:configuration-data config-data
+                                              :pointcut-data nil
+                                              :asset-id (:asset-id policy-info)
+                                              :asset-version (:version policy-info)
+                                              :group-id (:group-id policy-info)})))})
             (parse-response)
-            :body))
-      ;; Inbound policy - use standard endpoint
-      (-> @(http/post (format (gen-url "/apimanager/api/v1/organizations/%s/environments/%s/apis/%s/policies") org-id env-id api-id)
-                     {:headers (default-headers)
-                      :body (if use-raw-json
-                              ;; Raw JSON body to preserve camelCase keys from config file
-                              (json/write-value-as-string
-                               {"configurationData" config-data
-                                "pointcutData" nil
-                                "assetId" (:asset-id policy-info)
-                                "assetVersion" (:version policy-info)
-                                "groupId" (:group-id policy-info)})
-                              (edn->json :camel
-                                         {:configuration-data config-data
-                                          :pointcut-data nil
-                                          :asset-id (:asset-id policy-info)
-                                          :asset-version (:version policy-info)
-                                          :group-id (:group-id policy-info)}))})
-          (parse-response)
-          :body))))
+            :body)))))
 
 (defn create-api-policy [{:keys [args]
                           [org env api policy] :args

@@ -292,7 +292,7 @@
 (def options [["-g" "--group NAME" "For asset query. Same as organization_ids=ID"]
               ["-a" "--asset NAME" "For asset query. Asset name"]
               ["-v" "--version VERSION" "For asset query. Asset version"]
-              ["-q" "--search-term STRING" "Query string. Same as search-term=STRING"
+              ["-Q" "--search-term STRING" "Query string. Same as search-term=STRING"
                :parse-fn #(str/split % #",")]
               ["-A" "--all" "Query assets in all organizations or all applications"]
               ["-F" "--fields FIELDS" "Fields for assets list"
