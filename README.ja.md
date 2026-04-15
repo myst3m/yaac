@@ -53,7 +53,7 @@ yaac deploy app my-app target=hy:leibniz
 | `download` | `dl` | APIプロキシをJARでダウンロード | [doc/download.md](doc/download.md) |
 | `config` | `cfg` | デフォルトorg/env/target設定、認証情報管理 | [doc/config.md](doc/config.md) |
 | `build` | - | 組み込みMavenでビルド | [doc/build.md](doc/build.md) |
-| `logs` | - | CH2.0アプリログ表示 | [doc/logs.md](doc/logs.md) |
+| `logs` | - | CH2.0アプリログ表示（プラットフォームAPI / JMXモジュール） | [doc/logs.md](doc/logs.md) |
 | `http` | - | デプロイ済みアプリにHTTPリクエスト | [doc/http.md](doc/http.md) |
 | `auth` | - | OAuth2フロー（認可コード、クライアント認証、Azure） | [doc/auth.md](doc/auth.md) |
 | `a2a` | - | A2A（Agent-to-Agent）プロトコルクライアント | [doc/a2a.md](doc/a2a.md) |

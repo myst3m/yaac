@@ -49,7 +49,7 @@ yaac deploy app my-app target=hy:leibniz
 | `download` | `dl` | Download API proxy as JAR | [doc/download.md](doc/download.md) |
 | `config` | `cfg` | Set default org/env/target, manage credentials | [doc/config.md](doc/config.md) |
 | `build` | - | Run Maven goals with embedded Maven | [doc/build.md](doc/build.md) |
-| `logs` | - | View CloudHub 2.0 application logs | [doc/logs.md](doc/logs.md) |
+| `logs` | - | View CH2.0 logs (platform API or JMX module) | [doc/logs.md](doc/logs.md) |
 | `http` | - | Send HTTP requests to deployed apps | [doc/http.md](doc/http.md) |
 | `auth` | - | OAuth2 flows (code, client credentials, Azure) | [doc/auth.md](doc/auth.md) |
 | `a2a` | - | A2A (Agent-to-Agent) protocol client | [doc/a2a.md](doc/a2a.md) |
