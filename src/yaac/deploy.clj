@@ -117,7 +117,7 @@
 (def options [["-g" "--group NAME" "Group name. Normally BG name"]
               ["-a" "--asset NAME" "Asset name"]
               ["-v" "--version VERSION" "Asset version"]
-              ["-q" "--search-term STRING" "Query string. Same as search-term=STRING"
+              ["-Q" "--search-term STRING" "Query string. Same as search-term=STRING"
                :parse-fn #(str/split % #",")]
               ["-L" "--otel-endpoint URL" "OTLP endpoint URL (auto-sets all OTLP properties)"
                :id :otel-endpoint]])
