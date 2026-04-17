@@ -84,24 +84,26 @@
   (uber nil)
 
   ;; Then run native-image
-  (let [graalvm-home (or (System/getenv "GRAALVM_HOME") "/opt/graal")
-        native-image-bin (str graalvm-home "/bin/native-image")]
-    (println "Building native image...")
-    (b/process {:command-args [native-image-bin
-                               "-jar" uber-file
-                               "-o" native-image-name
-                               ;; GraalVM options
-                               "--features=clj_easy.graal_build_time.InitClojureClasses"
-                               "--no-fallback"
-                               ;; Build time init for libraries storing Java objects in Vars
-                               "--initialize-at-build-time=org.fusesource.jansi,java.sql.Date,org.slf4j.impl.StaticLoggerBinder,com.github.fzakaria.slf4j.timbre"
-                               ;; Enable URL protocols for Maven plugin classloading
-                               "--enable-url-protocols=jar,http,https"
-                               ;; Quick build mode (faster compile, slower runtime)
-                               "-Ob"
-                               ;; Resource limits
-                               "-J-Xmx8g"
-                               "-J-XX:ActiveProcessorCount=4"
-                               ;; Debug
-                               "-H:+ReportExceptionStackTraces"]})
-    (println "Native image built:" native-image-name)))
+  (let [graalvm-home (or (System/getenv "GRAALVM_HOME") "/opt/graalvm-21")
+        native-image-bin (str graalvm-home "/bin/native-image")
+        env (-> (into {} (System/getenv))
+                (assoc "JAVA_HOME" graalvm-home
+                       "GRAALVM_HOME" graalvm-home
+                       "PATH" (str graalvm-home "/bin:" (System/getenv "PATH"))))]
+    (println "Building native image with GraalVM at" graalvm-home)
+    (let [{:keys [exit]}
+          (b/process {:command-args [native-image-bin
+                                     "-jar" uber-file
+                                     "-o" native-image-name
+                                     "--features=clj_easy.graal_build_time.InitClojureClasses"
+                                     "--no-fallback"
+                                     "--initialize-at-build-time=org.fusesource.jansi,java.sql.Date,org.slf4j.impl.StaticLoggerBinder,com.github.fzakaria.slf4j.timbre"
+                                     "--enable-url-protocols=jar,http,https"
+                                     "-Ob"
+                                     "-J-Xmx8g"
+                                     "-J-XX:ActiveProcessorCount=4"
+                                     "-H:+ReportExceptionStackTraces"]
+                      :env env})]
+      (if (zero? exit)
+        (println "Native image built:" native-image-name)
+        (throw (ex-info "native-image build failed" {:exit exit}))))))
