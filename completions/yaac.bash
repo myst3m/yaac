@@ -37,7 +37,7 @@ _yaac_completions() {
     # --- Options per command ---
     local get_opts="-g --group -a --asset -v --version -Q --search-term -A --all -F --fields --type --describe --query --start --end --from --duration --aggregation --app-id --api-id --group-by --limit --offset"
     local upload_opts="-g --group -a --asset -v --version -t --asset-type --api-version"
-    local deploy_opts="-g --group -a --asset -v --version -Q --search-term"
+    local deploy_opts="-g --group -a --asset -v --version -Q --search-term -L --otel-endpoint --wait --no-wait --timeout"
     local deploy_manifest_opts="-n --dry-run --only --scan --config-properties"
     local delete_opts="-g --group -a --asset -v --version -A --all --all-orgs --dry-run --force --hard-delete -M --managed -t --type"
     local clear_opts="--dry-run"

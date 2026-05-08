@@ -98,6 +98,12 @@
            ""
            "# Deploy to Hybrid (onpremise)"
            "  > yaac deploy app target=hy:leibniz"
+           ""
+           "# Skip waiting for APPLIED (return immediately)"
+           "  > yaac deploy app T1 Production my-app -g T1 -a hello-app -v 0.0.1 target=cloudhub-ap-northeast-1 --no-wait"
+           ""
+           "# Custom timeout (5 minutes)"
+           "  > yaac deploy app T1 Production my-app -g T1 -a hello-app -v 0.0.1 target=cloudhub-ap-northeast-1 --timeout 300"
            ""])
          (str/join \newline))))
 
@@ -120,7 +126,112 @@
               ["-Q" "--search-term STRING" "Query string. Same as search-term=STRING"
                :parse-fn #(str/split % #",")]
               ["-L" "--otel-endpoint URL" "OTLP endpoint URL (auto-sets all OTLP properties)"
-               :id :otel-endpoint]])
+               :id :otel-endpoint]
+              [nil "--[no-]wait" "Wait for deployment to reach APPLIED/STARTED (default true). Use --no-wait to return immediately."
+               :id :wait
+               :default true]
+              [nil "--timeout SECONDS" "Wait timeout in seconds (default 600)"
+               :id :wait-timeout
+               :default 600
+               :parse-fn parse-long
+               :validate [pos? "Must be positive"]]])
+
+(def ^:private mc-terminal-ok #{"APPLIED"})
+(def ^:private mc-terminal-fail #{"FAILED" "NOT_RESPONDING" "DEPLOYMENT_FAILED"})
+(def ^:private hybrid-terminal-ok #{"STARTED"})
+(def ^:private hybrid-terminal-fail #{"DEPLOYMENT_FAILED" "DEPLOY_FAILED" "FAILED" "NOT_RESPONDING"})
+
+(defn- fetch-mc-status
+  "Fetch deployment status from AMC. Returns :status keyword or nil on transient error."
+  [org-id env-id app-id]
+  (try
+    (-> @(http/get (format (gen-url "/amc/application-manager/api/v2/organizations/%s/environments/%s/deployments/%s")
+                           org-id env-id app-id)
+                   {:headers (default-headers)})
+        parse-response :body :status)
+    (catch Exception e
+      (log/debug "fetch-mc-status error:" (ex-message e))
+      nil)))
+
+(defn- fetch-hybrid-status
+  [org-id env-id app-id]
+  (try
+    (-> @(http/get (format (gen-url "/hybrid/api/v1/applications/%s") app-id)
+                   {:headers (assoc (default-headers)
+                                    "X-ANYPNT-ORG-ID" org-id
+                                    "X-ANYPNT-ENV-ID" env-id)})
+        parse-response :body :data :last-reported-status)
+    (catch Exception e
+      (log/debug "fetch-hybrid-status error:" (ex-message e))
+      nil)))
+
+(defn- wait-for-deploy
+  "Poll deployment status until terminal-ok, terminal-fail, or timeout.
+   Prints a status line (overwritable with \\r) on each change.
+   Returns {:status final-status, :timed-out? bool, :failed? bool}.
+   target-type: :mc (ch2/rtf) or :hybrid"
+  [{:keys [target-type org-id env-id app-id app-name timeout-secs]}]
+  (let [deadline (+ (System/currentTimeMillis) (* 1000 (or timeout-secs 600)))
+        fetch-fn (case target-type
+                   :hybrid #(fetch-hybrid-status org-id env-id app-id)
+                   #(fetch-mc-status org-id env-id app-id))
+        ok-set    (case target-type :hybrid hybrid-terminal-ok mc-terminal-ok)
+        fail-set  (case target-type :hybrid hybrid-terminal-fail mc-terminal-fail)
+        start     (System/currentTimeMillis)
+        notify    (fn [status elapsed]
+                    (when-not yc/*quiet*
+                      (print (format "\r\033[K  [%s] %s (%ds)\n" app-name (or status "?") elapsed))
+                      (flush)))]
+    (loop [last-status nil]
+      (let [now (System/currentTimeMillis)
+            status (fetch-fn)
+            elapsed (quot (- now start) 1000)]
+        (when (and status (not= status last-status))
+          (notify status elapsed))
+        (cond
+          (and status (ok-set status))   {:status status :timed-out? false :failed? false}
+          (and status (fail-set status)) {:status status :timed-out? false :failed? true}
+          (>= now deadline)              {:status (or status "?") :timed-out? true :failed? false}
+          :else (do (Thread/sleep 5000) (recur (or status last-status))))))))
+
+(defn- wait-one
+  "Wait for one result map. Returns a result map (possibly an ex-info on failure)."
+  [{:keys [wait-timeout]} target-type org-id env-id result]
+  (let [app-id   (:id result)
+        app-name (or (-> result :extra :name) (:name result) app-id)
+        {:keys [status timed-out? failed?]}
+        (wait-for-deploy {:target-type target-type
+                          :org-id org-id
+                          :env-id env-id
+                          :app-id app-id
+                          :app-name app-name
+                          :timeout-secs wait-timeout})
+        updated-extras (assoc (:extra result) :status status)
+        updated (assoc result :extra updated-extras)]
+    (cond
+      failed?     (e/error (format "Deployment failed: %s status=%s" app-name status)
+                           (assoc updated-extras :message (str "Deployment failed with status " status)))
+      timed-out?  (e/error (format "Timeout waiting for %s (status=%s, timeout=%ss)" app-name status wait-timeout)
+                           (assoc updated-extras :message (str "Timed out after " wait-timeout "s; last status: " status)))
+      :else       updated)))
+
+(defn- maybe-wait
+  "If wait is enabled, poll each deployment until it reaches a terminal state.
+   Accepts either a single result map or a vector/seq of result maps.
+   Returns same shape as input."
+  [{:keys [wait] :as opts} target-type org-id env-id results]
+  (if (and wait results)
+    (let [coll? (sequential? results)
+          items (if coll? results [results])
+          processed (mapv (fn [r]
+                            (cond
+                              (instance? Throwable r) r
+                              (:errors r) r
+                              (not (:id r)) r
+                              :else (wait-one opts target-type org-id env-id r)))
+                          items)]
+      (if coll? processed (first processed)))
+    results))
 
 (defn- build-runtime-version
   "Build runtime version string with java version suffix.
@@ -225,21 +336,22 @@
 
                   (log/debug "Deploy URL:" url)
                   (log/debug "payload:" rtf-payload)
-                  
+
                   (-> @(http-fn url {:body (edn->json rtf-payload)
                                      :headers (default-headers)})
                       (parse-response)
                       :body
                       (as-> payload
                           (if-not (:errors payload)
-                            (yc/add-extra-fields payload
-                                                 :org (org->name org)
-                                                 :env (env->name org env)
-                                                 :name target-app-name
-                                                 :id (get payload :id)
-                                                 :status (get-in payload [:application :status])
-                                                 :deployment-status (get payload :status)
-                                                 :target (yc/target->name org env target-id))
+                            (->> (yc/add-extra-fields payload
+                                                      :org (org->name org)
+                                                      :env (env->name org env)
+                                                      :name target-app-name
+                                                      :id (get payload :id)
+                                                      :status (get-in payload [:application :status])
+                                                      :deployment-status (get payload :status)
+                                                      :target (yc/target->name org env target-id))
+                                 (maybe-wait opts :mc target-org-id target-env-id))
                             (throw (e/invalid-arguments))))))
                 (throw (e/invalid-arguments "Invalid arguments" {:args args}))))]
       
@@ -353,14 +465,15 @@
                       :body
                       (as-> payload
                           (if-not (:errors payload)
-                            (yc/add-extra-fields payload
-                                                 :org (org->name org)
-                                                 :env (env->name org env)
-                                                 :name target-app-name
-                                                 :id (get payload :id)
-                                                 :status (get-in payload [:application :status])
-                                                 :deployment-status (get payload :status)
-                                                 :target (yc/target->name org env target-id))
+                            (->> (yc/add-extra-fields payload
+                                                      :org (org->name org)
+                                                      :env (env->name org env)
+                                                      :name target-app-name
+                                                      :id (get payload :id)
+                                                      :status (get-in payload [:application :status])
+                                                      :deployment-status (get payload :status)
+                                                      :target (yc/target->name org env target-id))
+                                 (maybe-wait opts :mc target-org-id target-env-id))
                             (throw (e/invalid-arguments))))))
                 (catch Exception e
                   (let [data (ex-data e)
@@ -441,7 +554,8 @@
                                             :name app-or-prefix
                                             :message :message
                                             :status #(get-in % [:last-reported-status])
-                                            :target target-name)))
+                                            :target target-name)
+                       (->> (maybe-wait opts :hybrid org-id env-id))))
                  (catch Exception e
                   (let [msg (or (-> (ex-data e) :extra :message)
                                 (-> (ex-data e) :body :message)

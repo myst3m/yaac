@@ -240,6 +240,11 @@
                              " " (jansi/a :faint loc)))))
                   frames)))))
 
+(defonce ^:private exit-code (atom 0))
+
+(defn set-exit-code! [n] (reset! exit-code n))
+(defn current-exit-code [] @exit-code)
+
 (defn print-error [e & {:keys [output-format debug]}]
   (println (str (jansi/fg :red (jansi/a :bold "ERROR")) " "
                 (or (ex-message e) "Unexpected error")))
@@ -298,6 +303,9 @@
               (when-not no-token (yc/load-session!))
               (loop []
                 (let [results (util/with-spin "Processing..." (handler cooked-params))]
+                (when (and (sequential? results)
+                           (some #(instance? Throwable %) results))
+                  (set-exit-code! 1))
                 (if (= :raw (:output-format data))
 
                   (do (async/put! *console* \newline)
@@ -357,6 +365,7 @@
                         (recur))
                       (async/>!! *console* :done)))))))
             (catch Exception e (do
+                                 (set-exit-code! 1)
                                  (print-error e cooked-params)
                                  (async/>!! *console* :done)))))))
     (async/go
@@ -562,4 +571,7 @@
 
 (defn -main [& args]
   (apply cli args)
-  (shutdown-agents))
+  (shutdown-agents)
+  (let [code (current-exit-code)]
+    (when (pos? code)
+      (System/exit code))))
