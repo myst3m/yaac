@@ -119,22 +119,28 @@
           ""
           "Resources:"
           ""
-          "  - org <org|id>                Clear apps, APIs, secret-groups, assets from org."
-          "                                Flex Gateways are excluded by default — pass --all"
-          "                                to include them. RTF and Private Spaces are never deleted."
+          "  - org <org|id>                Clear all envs in org (apps, APIs, secret-groups, assets)."
+          "  - org <org|id> <env>          Clear only that env (apps, APIs, secret-groups)."
+          "                                Org-level assets/RTFs/PSs are NOT touched in env scope."
+          "                                Flex Gateways are excluded by default — pass --all to include."
+          "                                RTF and Private Spaces are never deleted by clear."
           ""
           "Example:"
           ""
           "# Preview what would be deleted (default: gws excluded)"
           "  > yaac clear org T1 --dry-run"
           ""
-          "# Clear apps/APIs/secret-groups/assets (gateways are kept)"
+          "# Clear apps/APIs/secret-groups/assets in all envs (gateways are kept)"
           "  > yaac clear org T1"
+          ""
+          "# Clear only Sandbox env (apps/APIs/secret-groups, assets are NOT touched)"
+          "  > yaac clear org T1 Sandbox --dry-run"
+          "  > yaac clear org T1 Sandbox"
           ""
           "# Clear everything including Flex Gateways (takes 7 days to fully delete)"
           "  > yaac clear org T1 --all"
           ""
-          "# Clear apps/APIs only, keep gateways and assets"
+          "# Clear apps/APIs only, keep assets"
           "  > yaac clear org T1 --except assets,sgs"
           ""]
          (str/join \newline))))
@@ -347,14 +353,17 @@
     (cond
       ;; Dry-run mode - convert to table format
       (= "dry-run" (get-in first-item [:extra :action]))
-      (let [table-data (dry-run->table-data (:extra first-item))]
+      (let [table-data (dry-run->table-data (:extra first-item))
+            scope-header (let [{:keys [org env]} (:extra first-item)]
+                           (str "Dry-run scope: " org (when env (str " / " env)) "\n"))]
         (case output-format
           :json (util/json-pprint first-item)
           :edn (with-out-str (clojure.pprint/pprint first-item))
-          (if (empty? table-data)
-            "No resources to delete.\n"
-            (yc/default-format-by [[[:extra :type]] [[:extra :name]] [[:extra :status]]]
-                                  :short table-data opts))))
+          (str scope-header
+               (if (empty? table-data)
+                 "No resources to delete.\n"
+                 (yc/default-format-by [[[:extra :type]] [[:extra :name]] [[:extra :status]]]
+                                       :short table-data opts)))))
 
       ;; Actual deletion results
       :else
@@ -401,9 +410,16 @@
          {:status http-status :extra {:asset asset-id :version version :message msg}})))))
 
 (defn- -collect-org-resources
-  "Collect all resources (apps, apis, assets, gateways, secret-groups, rtf, ps) from an organization"
-  [org]
-  (let [envs (-get-environments org)
+  "Collect all resources (apps, apis, assets, gateways, secret-groups, rtf, ps)
+   from an organization. When `env` is supplied, collection is scoped to that
+   single environment and org-level resources (assets, rtfs, pss) are omitted —
+   env-scoped clear should not silently nuke org-wide artifacts."
+  ([org] (-collect-org-resources org nil))
+  ([org env]
+  (let [envs (if env
+               [{:name env}]
+               (-get-environments org))
+        env-scoped? (some? env)
         org-envs (mapv (fn [{e :name}] [org e]) envs)
         ;; Collect apps
         apps (->> org-envs
@@ -440,24 +456,30 @@
                                   (log/debug "Error collecting secret groups from" g e ":" (ex-message ex))
                                   []))))
                  vec)
-        ;; Collect assets
-        assets (try (get-assets {:group org})
+        ;; Collect assets (org-level — skipped when env-scoped)
+        assets (if env-scoped?
+                 []
+                 (try (get-assets {:group org})
+                      (catch Exception ex
+                        (log/debug "Error collecting assets from" org ":" (ex-message ex))
+                        [])))
+        ;; Collect Runtime Fabrics (org-level — skipped when env-scoped)
+        rtfs (if env-scoped?
+               []
+               (try (-get-runtime-fabrics org)
                     (catch Exception ex
-                      (log/debug "Error collecting assets from" org ":" (ex-message ex))
-                      []))
-        ;; Collect Runtime Fabrics
-        rtfs (try (-get-runtime-fabrics org)
-                  (catch Exception ex
-                    (log/debug "Error collecting RTFs from" org ":" (ex-message ex))
-                    []))
-        ;; Collect Private Spaces
-        pss (try (-get-cloudhub20-privatespaces org)
-                 (catch Exception ex
-                   (log/debug "Error collecting Private Spaces from" org ":" (ex-message ex))
-                   []))]
+                      (log/debug "Error collecting RTFs from" org ":" (ex-message ex))
+                      [])))
+        ;; Collect Private Spaces (org-level — skipped when env-scoped)
+        pss (if env-scoped?
+              []
+              (try (-get-cloudhub20-privatespaces org)
+                   (catch Exception ex
+                     (log/debug "Error collecting Private Spaces from" org ":" (ex-message ex))
+                     [])))]
     (log/debug "Collected resources - apps:" (count apps) "apis:" (count apis)
                "gws:" (count gws) "sgs:" (count sgs) "assets:" (count assets) "rtfs:" (count rtfs) "pss:" (count pss))
-    {:apps apps :apis apis :gws gws :sgs sgs :assets assets :rtfs rtfs :pss pss}))
+    {:apps apps :apis apis :gws gws :sgs sgs :assets assets :rtfs rtfs :pss pss})))
 
 (defn- -delete-org-resources
   "Delete all resources from an organization. Returns deletion results.
@@ -550,41 +572,48 @@
         @results))))
 
 (defn clear-organization
-  "Clear resources (apps, apis, gateways, secret-groups, assets) from org without deleting the org itself.
-   RTF and Private Spaces are NOT deleted.
+  "Clear resources from an organization (or a single env within it) without
+   deleting the org itself.
+
+   Args:
+     [org]        Clear all envs in org. Includes org-level assets.
+     [org env]    Clear only that env. Org-level assets/RTFs/PSs are NOT touched.
+
    Flex Gateways (gws) are excluded by default — pass --all to include them
-   (gateway deletion is async, takes 7 days, and stalls the rest of the clear)."
+   (gateway deletion is async, takes 7 days, and stalls the rest of the clear).
+   RTF and Private Spaces are never deleted by clear."
   [{:keys [args dry-run except all]
-    [org] :args
     :as opts}]
-  (if-not org
-    (throw (e/invalid-arguments "Org not specified" :args args))
-    (let [except-set (cond-> (if except
-                               (into #{} (map str/trim) (str/split except #","))
-                               #{})
-                       ;; Default: exclude gws unless --all is set. --except gws
-                       ;; still works (it's a no-op on top of the default).
-                       (not all) (conj "gws"))
-          {:keys [apps apis gws sgs assets] :as resources} (-collect-org-resources org)
-          resources (cond-> (dissoc resources :pss :rtfs)
-                     (contains? except-set "apps")   (dissoc :apps)
-                     (contains? except-set "apis")   (dissoc :apis)
-                     (contains? except-set "gws")    (dissoc :gws)
-                     (contains? except-set "sgs")    (dissoc :sgs)
-                     (contains? except-set "assets") (dissoc :assets))]
-      (if dry-run
-        ;; Dry-run: show what would be deleted
-        [{:extra (cond-> {:org org :action "dry-run"}
-                   (:apps resources)   (assoc :apps (mapv :name (:apps resources)))
-                   (:apis resources)   (assoc :apis (mapv :asset-id (:apis resources)))
-                   (:gws resources)    (assoc :gws (mapv :name (:gws resources)))
-                   (:sgs resources)    (assoc :sgs (mapv :name (:sgs resources)))
-                   (:assets resources) (assoc :assets (mapv :asset-id (:assets resources))))}]
-        ;; Actually delete resources (but not org, not RTF, not PS)
-        (let [results (-delete-org-resources org resources)]
-          (if (empty? results)
-            [{:extra {:org org :action "clear" :message "No resources to clear"}}]
-            results))))))
+  (let [[org env] args]
+    (if-not org
+      (throw (e/invalid-arguments "Org not specified" :args args))
+      (let [except-set (cond-> (if except
+                                 (into #{} (map str/trim) (str/split except #","))
+                                 #{})
+                         ;; Default: exclude gws unless --all is set. --except gws
+                         ;; still works (it's a no-op on top of the default).
+                         (not all) (conj "gws"))
+            {:keys [apps apis gws sgs assets] :as resources} (-collect-org-resources org env)
+            resources (cond-> (dissoc resources :pss :rtfs)
+                       (contains? except-set "apps")   (dissoc :apps)
+                       (contains? except-set "apis")   (dissoc :apis)
+                       (contains? except-set "gws")    (dissoc :gws)
+                       (contains? except-set "sgs")    (dissoc :sgs)
+                       (contains? except-set "assets") (dissoc :assets))]
+        (if dry-run
+          ;; Dry-run: show what would be deleted
+          [{:extra (cond-> {:org org :action "dry-run"}
+                     env                 (assoc :env env)
+                     (:apps resources)   (assoc :apps (mapv :name (:apps resources)))
+                     (:apis resources)   (assoc :apis (mapv :asset-id (:apis resources)))
+                     (:gws resources)    (assoc :gws (mapv :name (:gws resources)))
+                     (:sgs resources)    (assoc :sgs (mapv :name (:sgs resources)))
+                     (:assets resources) (assoc :assets (mapv :asset-id (:assets resources))))}]
+          ;; Actually delete resources (but not org, not RTF, not PS)
+          (let [results (-delete-org-resources org resources)]
+            (if (empty? results)
+              [{:extra {:org org :env env :action "clear" :message "No resources to clear"}}]
+              results)))))))
 
 (defn delete-organization [{:keys [args dry-run force]
                            [org] :args
