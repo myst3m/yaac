@@ -84,21 +84,23 @@
            ""
            "# Delete organization with all resources (--force)"
            "# Deletes: apps, APIs, gateways, secret-groups, assets, RTF, Private Spaces"
-           "  > yaac delete org T1 --force --dry-run"
            "  > yaac delete org T1 --force"
            ""
-           "# Delete asset"
+           "# Delete asset (preview with --dry-run)"
+           "  > yaac delete asset -a hello-api -g T1 -v 0.0.1 --dry-run"
            "  > yaac delete asset -a hello-api -g T1 -v 0.0.1"
            ""
-           "# Delete application"
+           "# Delete application (preview with --dry-run)"
+           "  > yaac delete app T1 Production hello-api --dry-run"
            "  > yaac delete app hello-api"
            ""
            "# Delete all apps in org (all envs)"
            "  > yaac delete app T1 -A --dry-run"
            "  > yaac delete app T1 -A --force"
            ""
-           "# Delete all apps in specific env"
-           "  > yaac delete app T1 Production -A"
+           "# Delete single API instance (preview with --dry-run)"
+           "  > yaac delete api T1 Sandbox <api-id> --dry-run"
+           "  > yaac delete api T1 Sandbox <api-id>"
            ""
            "# Delete all APIs in org (all envs)"
            "  > yaac delete api T1 -A --dry-run"
@@ -117,22 +119,23 @@
           ""
           "Resources:"
           ""
-          "  - org <org|id>                Clear apps, APIs, gateways, secret-groups, assets from org."
-          "                                (RTF and Private Spaces are NOT deleted)"
+          "  - org <org|id>                Clear apps, APIs, secret-groups, assets from org."
+          "                                Flex Gateways are excluded by default — pass --all"
+          "                                to include them. RTF and Private Spaces are never deleted."
           ""
           "Example:"
           ""
-          "# Preview what would be deleted"
+          "# Preview what would be deleted (default: gws excluded)"
           "  > yaac clear org T1 --dry-run"
           ""
-          "# Clear all resources from organization"
+          "# Clear apps/APIs/secret-groups/assets (gateways are kept)"
           "  > yaac clear org T1"
           ""
-          "# Clear all except gateways"
-          "  > yaac clear org T1 --except gws"
+          "# Clear everything including Flex Gateways (takes 7 days to fully delete)"
+          "  > yaac clear org T1 --all"
           ""
-          "# Clear all except gateways and apps"
-          "  > yaac clear org T1 --except gws,apps"
+          "# Clear apps/APIs only, keep gateways and assets"
+          "  > yaac clear org T1 --except assets,sgs"
           ""]
          (str/join \newline))))
 
@@ -149,7 +152,8 @@
               ["-t" "--type TYPE" "Alert type: api, app, or server"]])
 
 (def clear-options [[nil  "--dry-run"  "Show items without deleting"]
-                    [nil  "--except TYPES" "Comma-separated resource types to exclude (apps,apis,gws,sgs,assets)"]])
+                    [nil  "--except TYPES" "Comma-separated resource types to exclude (apps,apis,gws,sgs,assets). Gateways (gws) are excluded by default; pass --all to include them."]
+                    ["-A" "--all" "Include Flex Gateways (gws) in the clear. By default gws are excluded because gateway deletion takes 7 days to complete and would stall the cleanup."]])
 
 ;; Forward declarations
 (declare -delete-api-instance-by-id -delete-asset-by-id)
@@ -266,6 +270,12 @@
                                     (or (re-find (re-pattern (str "^" app "$")) (:name %))
                                         (re-find (re-pattern (str "^" app "$")) (str (:id %)))))))]
             (cond
+              dry-run
+              (do (println (format "Would delete %d application(s):" (count apps)))
+                  (doseq [a apps]
+                    (println (format "  - %s (%s/%s)" (:name a) org env)))
+                  [])
+
               (= 1 (count apps))
               (cond->> apps
                 *no-multi-thread* (map #(-delete-application org env %))
@@ -280,7 +290,7 @@
               (throw (e/app-not-found "No app found" {:org (org->name org) :env (env->name org env) :app app})))))))))
 
 
-(defn delete-asset [{:keys [args group asset version all hard-delete]
+(defn delete-asset [{:keys [args group asset version all dry-run hard-delete]
                      :as opts}]
 
   (let [[a1 a2 a3] args
@@ -304,12 +314,16 @@
       (let [vs (if all
                  (map :version (yc/get-assets {:group group :asset artifact-id}))
                  [version])]
-        (try
-          (->> vs
-               (mapv (fn [v]
-                       (util/spin (str "Deleting " artifact-id ":" v "..."))
-                       (-delete-asset-by-id group-id artifact-id v hard-delete))))
-          (finally (util/spin)))))))
+        (if dry-run
+          (do (println (format "Would delete %d version(s) of asset %s/%s:" (count vs) group artifact-id))
+              (doseq [v vs] (println (format "  - %s" v)))
+              [])
+          (try
+            (->> vs
+                 (mapv (fn [v]
+                         (util/spin (str "Deleting " artifact-id ":" v "..."))
+                         (-delete-asset-by-id group-id artifact-id v hard-delete))))
+            (finally (util/spin))))))))
 
 
 (defn- dry-run->table-data
@@ -537,14 +551,20 @@
 
 (defn clear-organization
   "Clear resources (apps, apis, gateways, secret-groups, assets) from org without deleting the org itself.
-   RTF and Private Spaces are NOT deleted."
-  [{:keys [args dry-run except]
+   RTF and Private Spaces are NOT deleted.
+   Flex Gateways (gws) are excluded by default — pass --all to include them
+   (gateway deletion is async, takes 7 days, and stalls the rest of the clear)."
+  [{:keys [args dry-run except all]
     [org] :args
     :as opts}]
   (if-not org
     (throw (e/invalid-arguments "Org not specified" :args args))
-    (let [except-set (when except
-                       (into #{} (map str/trim) (str/split except #",")))
+    (let [except-set (cond-> (if except
+                               (into #{} (map str/trim) (str/split except #","))
+                               #{})
+                       ;; Default: exclude gws unless --all is set. --except gws
+                       ;; still works (it's a no-op on top of the default).
+                       (not all) (conj "gws"))
           {:keys [apps apis gws sgs assets] :as resources} (-collect-org-resources org)
           resources (cond-> (dissoc resources :pss :rtfs)
                      (contains? except-set "apps")   (dissoc :apps)
@@ -699,7 +719,10 @@
       (let [api-id (yc/api->id org env api)]
         (if-not (and org env api-id)
           (throw (e/invalid-arguments "Org, Env and Api need to be specified" {:args args}))
-          (-delete-api-instance-by-id org env api-id))))))
+          (if dry-run
+            (do (println (format "Would delete API instance: %s (id=%s, %s/%s)" api api-id org env))
+                [])
+            (-delete-api-instance-by-id org env api-id)))))))
 
 
 (defn delete-api-contracts [{:keys [args] :as opts}]
