@@ -15,7 +15,10 @@
             [taoensso.timbre :as log]
             [zeph.client :as http]
             [reitit.core :as r]
-            [yaac.core :refer [*org* *env* parse-response default-headers short-uuid org->id env->id api->id org->name ps->id conn->id load-session! gen-url assign-connected-app-scopes connected-app->id -get-root-organization -get-client-provider client-provider->id -get-api-upstreams -patch-api-upstream -get-api-policy -patch-api-policy -patch-api-policy-state policy-name->id] :as yc]
+            [yaac.core :refer [*org* *env* parse-response default-headers short-uuid org->id env->id api->id org->name load-session! gen-url assign-connected-app-scopes connected-app->id -get-root-organization] :as yc]
+            [yaac.core.cloudhub2 :refer [ps->id conn->id -get-cloudhub20-connections]]
+            [yaac.core.identity :refer [-get-client-provider client-provider->id]]
+            [yaac.core.policy :refer [-get-api-upstreams -patch-api-upstream -get-api-policy -patch-api-policy -patch-api-policy-state policy-name->id]]
             [yaac.error :as e]
             [clojure.string :as str]
             [clojure.tools.cli :refer [parse-opts]]
@@ -308,7 +311,7 @@
         ps-id (ps->id org-id ps)
 
         {{:keys [id name  type]} :extra {:keys [routes]} :status}
-        (->> (yc/-get-cloudhub20-connections org-id ps-id)
+        (->> (-get-cloudhub20-connections org-id ps-id)
              (filter #(or (= conn (-> % :extra :id))
                           (= conn (-> % :extra :name))))
              (first))

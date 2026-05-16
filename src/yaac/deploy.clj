@@ -15,6 +15,7 @@
             [taoensso.timbre :as log]
             [zeph.client :as http]
             [reitit.core :as r]
+            [yaac.core.gateway :as gw]
             [yaac.core :refer [*org* *env* *deploy-target* *no-multi-thread*
                                parse-response default-headers
                                org->id env->id org->name target->id target->name load-session! env->name
@@ -314,7 +315,7 @@
                                         :else a)
                       target-cluster cluster
                       ;; Assets
-                      [{target-id :id}] (filter #(= target-cluster (:name %)) (yc/get-runtime-fabrics {:args [(org->name target-org-id)]}))
+                      [{target-id :id}] (filter #(= target-cluster (:name %)) (gw/get-runtime-fabrics {:args [(org->name target-org-id)]}))
                       deployed-apps (->> (yc/get-deployed-applications {:args [org env]})
                                          (filter #(= (-> % :target :target-id) target-id)))
 
@@ -683,10 +684,10 @@
                                  (throw (e/invalid-arguments "Org and Env should be specified or use default context with yaac config command" {:args args :target target})))
 
           [type target-type target-name target-id] (cond
-                                                     (#{:rtf :runtime-fabric} (keyword runtime-target)) ["RF" "runtime-fabric" cluster (yc/rtf->id org cluster)]
+                                                     (#{:rtf :runtime-fabric} (keyword runtime-target)) ["RF" "runtime-fabric" cluster (gw/rtf->id org cluster)]
                                                      (#{:ch2 :cloudhub2} (keyword runtime-target)) ["CH2" "shared-space" (csk/->HTTP-Header-Case cluster) cluster]
                                                      (#{:hy :hybrid} (keyword runtime-target)) ["HY" "server" (str cluster) (str (yc/hybrid-server->id org env cluster))]
-                                                     (#{:fg :flex :flexgateway} (keyword runtime-target)) ["HY" "server" cluster (yc/gw->id org env cluster)]
+                                                     (#{:fg :flex :flexgateway} (keyword runtime-target)) ["HY" "server" cluster (gw/gw->id org env cluster)]
                                                      :else (throw (e/not-implemented "Not implemented" {:args args :target target})))]
       
       (if-not (and org env target-id)

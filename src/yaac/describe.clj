@@ -19,11 +19,12 @@
                                add-extra-fields short-uuid
                                org->id env->id app->id target->id
                                org->name env->name load-session! -get-deployed-applications
-                               -enrich-application -get-client-provider
-                               gw->id -get-managed-gateway-detail
+                               -enrich-application
                                -get-container-application-specs
-                               -get-api-policy policy-name->id
                                gen-url] :as yc]
+            [yaac.core.gateway :refer [gw->id -get-managed-gateway-detail]]
+            [yaac.core.identity :refer [-get-client-provider]]
+            [yaac.core.policy :refer [-get-api-policy policy-name->id]]
             [yaac.error :as e]
             [clojure.string :as str]
             [clojure.tools.cli :refer [parse-opts]]

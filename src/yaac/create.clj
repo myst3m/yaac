@@ -17,8 +17,11 @@
             [reitit.core :as r]
             [yaac.core :refer [*org* *env* *deploy-target*
                                parse-response default-headers short-uuid
-                               org->id ps->id rtf->id env->id api->id app->id org->name env->name gw->id load-session!
-                               gen-url assign-connected-app-scopes -get-root-organization -get-api-upstreams] :as yc]
+                               org->id env->id api->id app->id org->name env->name load-session!
+                               gen-url assign-connected-app-scopes -get-root-organization] :as yc]
+            [yaac.core.cloudhub2 :refer [ps->id]]
+            [yaac.core.gateway :refer [gw->id rtf->id]]
+            [yaac.core.policy :refer [-get-api-upstreams]]
             [yaac.deploy :as deploy]
             [yaac.error :as e]
             [clojure.string :as str]

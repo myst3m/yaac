@@ -21,29 +21,24 @@
                                env->id
                                app->id
                                api->id
-                               gw->id
                                org->name
                                env->name
                                user->id
-                               provider->id
-                               client-provider->id
-                               ps->id
-                               rtf->id
                                load-session!
                                -get-root-organization
                                -get-user
                                -get-environments
                                -get-deployed-applications
                                -get-api-instances
-                               -get-runtime-fabrics
-                               -get-cloudhub20-privatespaces
-                               -get-gateways
-                               -get-managed-gateways
-                               -get-api-policies
                                -get-secret-groups
-                               alert->id
                                get-assets
                                gen-url] :as yc]
+            [yaac.core.alerts :refer [alert->id]]
+            [yaac.core.cloudhub2 :refer [ps->id -get-cloudhub20-privatespaces]]
+            [yaac.core.gateway :refer [gw->id rtf->id -get-runtime-fabrics
+                                       -get-gateways -get-managed-gateways]]
+            [yaac.core.identity :refer [provider->id client-provider->id]]
+            [yaac.core.policy :refer [-get-api-policies]]
             [yaac.error :as e]
             [clojure.string :as str]
             [clojure.tools.cli :refer [parse-opts]]

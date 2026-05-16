@@ -5,6 +5,7 @@
            [com.dylibso.chicory.wasm Parser]
            [com.dylibso.chicory.runtime  Module ExportFunction Instance])
   (:require [yaac.core :as yc :refer [*org* *env* *deploy-target* *no-cache* *no-multi-thread* *quiet* *console* global-base-url]]
+            [yaac.core.routing]
             [yaac.util :as util]
             [reitit.core :as r]
             [clojure.string :as str]
@@ -144,7 +145,7 @@
 (def router (r/router [;; Login
                        yaac.login/route
                        ;; Get
-                       yaac.core/route
+                       yaac.core.routing/route
                        ;; Upload
                        yaac.upload/route
                        ;; Download
