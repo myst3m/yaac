@@ -153,6 +153,7 @@
               [nil  "--all-orgs" "Delete from all organizations"]
               [nil  "--dry-run"  "Show items without deleting"]
               [nil  "--force"    "Force delete org with all resources / skip confirmation"]
+              [nil  "--force-delete" "Append forceDelete=true to the CH2 app DELETE call. Use for FAILED apps the standard delete reports 204 on but leaves behind."]
               [nil  "--hard-delete"  "Hard delete for assets"]
               ["-M" "--managed" "For Managed Flex Gateway"]
               ["-t" "--type TYPE" "Alert type: api, app, or server"]])
@@ -164,26 +165,30 @@
 ;; Forward declarations
 (declare -delete-api-instance-by-id -delete-asset-by-id)
 
-(defmulti -delete-application (fn [org env appi]
+(defmulti -delete-application (fn [org env appi & _opts]
                                 (csk/->kebab-case-keyword
                                  (or (-> appi :target :type)
                                      (-> appi :target :provider)
                                      :none))))
 
 ;; RTF/CH2
-(defmethod -delete-application :mc [org env appi]
+(defmethod -delete-application :mc [org env appi & {:keys [force-delete]}]
   (let [org-id (org->id org)
         env-id (env->id org env)
-        app-id (:id appi)]
-    (-> @(http/delete (format (gen-url "/amc/application-manager/api/v2/organizations/%s/environments/%s/deployments/%s") org-id env-id app-id)
-                     {:headers (default-headers)})
+        app-id (:id appi)
+        ;; forceDelete=true is required to evict FAILED deployments whose
+        ;; backing pods never came up — the standard endpoint reports 204
+        ;; but leaves the record in the AMC view.
+        url (cond-> (format (gen-url "/amc/application-manager/api/v2/organizations/%s/environments/%s/deployments/%s") org-id env-id app-id)
+              force-delete (str "?forceDelete=true"))]
+    (-> @(http/delete url {:headers (default-headers)})
         (parse-response)
         ;; body is nil on HTTP 204
         (dissoc :body)
         (yc/add-extra-fields :org (org->name org) :env (env->name org env) :app (:name appi)))))
 
 ;; Onpremise
-(defmethod -delete-application :server [org env appi]
+(defmethod -delete-application :server [org env appi & _opts]
   (let [org-id (org->id org)
         env-id (env->id org env)
         app-id (:id appi)]
@@ -196,7 +201,7 @@
         (dissoc :body)
         (yc/add-extra-fields :org (org->name org) :env (env->name org env) :app (:name appi)))))
 
-(defmethod -delete-application :default [org env appi]
+(defmethod -delete-application :default [org env appi & _opts]
   (throw (e/app-not-found "No application" {:org org :env env :app (:name appi)})))
 
 
@@ -211,7 +216,7 @@
        (apply concat)
        (vec)))
 
-(defn delete-application [{:keys [args all dry-run force]
+(defn delete-application [{:keys [args all dry-run force force-delete]
                            :as opts}]
   (let [[app env org] (reverse args) ;; app has to be specified
         org (or org *org*)           ;; If specified, use it
@@ -257,7 +262,7 @@
                      (format "Delete %d application(s)?" (count apps)) apps))
           (do (println (format "Deleting %d application(s)..." (count apps)))
               (->> apps
-                   (pmap #(-delete-application (:_org %) (:_env %) %))
+                   (pmap #(-delete-application (:_org %) (:_env %) % :force-delete force-delete))
                    (apply concat)
                    (vec)))
 
@@ -284,8 +289,8 @@
 
               (= 1 (count apps))
               (cond->> apps
-                *no-multi-thread* (map #(-delete-application org env %))
-                (not *no-multi-thread*) (pmap #(-delete-application org env %))
+                *no-multi-thread* (map #(-delete-application org env % :force-delete force-delete))
+                (not *no-multi-thread*) (pmap #(-delete-application org env % :force-delete force-delete))
                 :always (apply concat))
 
               (< 1 (count apps))
