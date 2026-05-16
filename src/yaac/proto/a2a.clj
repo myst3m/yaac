@@ -71,6 +71,19 @@
   (when-let [age (context-age-ms session)]
     (> age context-ttl-ms)))
 
+(defn extract-auth-challenge
+  "Pull the authChallenge payload out of an auth-required Task result.
+   The Anypoint A2A In-Task Authorization Code policy returns the OAuth
+   metadata as a DataPart inside status.message.parts. Returns nil if the
+   task is not auth-required or no challenge is present."
+  [result]
+  (when (and (map? result)
+             (= "auth-required" (get-in result [:status :state])))
+    (some->> (get-in result [:status :message :parts])
+             (filter #(= "data" (:kind %)))
+             (keep #(get-in % [:data :authChallenge]))
+             first)))
+
 (defn- maybe-warn-expired-context! [session]
   (when (context-expired? session)
     (binding [*out* *err*]

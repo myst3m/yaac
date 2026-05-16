@@ -5,6 +5,7 @@
             [yaac.markdown :as markdown]
             [yaac.util :as util]
             [yaac.proto.a2a :as a2a]
+            [yaac.a2a.oauth :as oauth]
             [clojure.string :as str]
             [taoensso.timbre :as log]
             [jansi-clj.core :as jansi]
@@ -248,29 +249,26 @@
       (str/replace "@" "%40")))
 
 (defn- format-auth-challenge
-  "Format authChallenge as a browser-ready authorization URL."
+  "Format an authChallenge for human display: list the key OAuth metadata
+   the user (or yaac) needs to complete the flow. The actual authorize URL
+   is built later (with PKCE) by the automated flow."
   [challenge]
   (when challenge
-    (let [endpoint (:authorizationEndpoint challenge)
-          scopes (:scopes challenge)
+    (let [{:keys [authorizationEndpoint tokenEndpoint scopes redirectUri
+                  responseType codeChallengeMethod audience
+                  secondaryAuthProvider]} challenge
           scope-str (if (sequential? scopes) (str/join " " scopes) (str scopes))
-          redirect-uri (:redirectUri challenge)
-          response-type (or (:responseType challenge) "code")
-          client-id (or (:clientId challenge) "intask-client")
-          params (cond-> []
-                   true (conj (str "response_type=" (url-encode response-type)))
-                   true (conj (str "client_id=" (url-encode client-id)))
-                   (seq scope-str) (conj (str "scope=" (url-encode scope-str)))
-                   redirect-uri (conj (str "redirect_uri=" (url-encode redirect-uri)))
-                   true (conj "state=intask-auth"))
-          full-url (str endpoint "?" (str/join "&" params))]
-      (str "\n  " (jansi/a :faint "ブラウザで開く:") "\n\n"
-           "  " full-url "\n\n"
-           "  " (jansi/a :faint (str "Scopes: " scope-str))
-           (when (:codeChallengeMethod challenge)
-             (str "\n  " (jansi/a :faint (str "PKCE: " (:codeChallengeMethod challenge)))))
-           (when (:tokenEndpoint challenge)
-             (str "\n  " (jansi/a :faint (str "Token Endpoint: " (:tokenEndpoint challenge)))))))))
+          row (fn [k v] (when v (str "\n  " (jansi/a :faint (format "%-18s" (str k ":"))) " " v)))]
+      (str
+       (when secondaryAuthProvider
+         (str "\n  " (jansi/a :bold "Provider: ") secondaryAuthProvider))
+       (row "Authorize URL" authorizationEndpoint)
+       (row "Token URL"     tokenEndpoint)
+       (row "Redirect URI"  redirectUri)
+       (row "Scopes"        (when (seq scope-str) scope-str))
+       (row "Response Type" (or responseType "code"))
+       (row "PKCE"          (or codeChallengeMethod "S256 (default)"))
+       (row "Audience"      audience)))))
 
 (defn- format-send-result
   "Format a message/send result for display.
@@ -308,12 +306,13 @@
                                   artifacts))
                    "\n"))
             (when (= "auth-required" status)
-              (let [challenge (some->> (get-in result [:status :message :parts])
-                                       (filter #(= "data" (:kind %)))
-                                       first :data :authChallenge)]
-                (str "\n" (jansi/fg :yellow "認証が必要です")
+              (let [challenge (a2a/extract-auth-challenge result)]
+                (str "\n" (jansi/fg :yellow "🔐 認証が必要です")
                      (format-auth-challenge challenge)
-                     "\n" (jansi/a :faint "トークン取得後: /auth <access_token> で再送してください") "\n")))
+                     "\n\n" (jansi/a :faint "  /auth                      ブラウザで OAuth フロー (要 --client-id か YAAC_A2A_CLIENT_ID)")
+                     "\n" (jansi/a :faint "  /auth <token>              既に取得済みの bearer token を貼り付け")
+                     "\n" (jansi/a :faint "  /auth --client-id <id>     ワンショットで client-id 指定して自動フロー")
+                     "\n")))
             (when-let [msg (get-in result [:status :message])]
               (let [text (if (map? msg)
                            (extract-text-parts (:parts msg))
@@ -373,12 +372,10 @@
         "completed" (jansi/a :faint (str "✓ " state))
         "input-required" (jansi/a :faint (str "? " state))
         "auth-required"
-        (let [challenge (some->> (get-in data [:status :message :parts])
-                                 (filter #(= "data" (:kind %)))
-                                 first :data :authChallenge)]
+        (let [challenge (a2a/extract-auth-challenge data)]
           (str (jansi/fg :yellow "🔐 認証が必要です")
                (format-auth-challenge challenge)
-               "\n" (jansi/a :faint "トークン取得後: /auth <access_token> で再送してください")))
+               "\n\n" (jansi/a :faint "  /auth で自動フロー、または /auth <token> で手動継続")))
         "failed" (str (jansi/a :faint (str "✗ " state))
                       (when-let [msg (get-in data [:status :message])]
                         (str "\n" (extract-text-parts (:parts msg)))))
@@ -549,12 +546,72 @@
 ;; --- Interactive Console ---
 
 (def ^:private slash-commands
-  [["/auth"    "Send auth token (InTaskAC)"]
+  [["/auth"    "Resume auth-required task (auto OAuth, or paste token)"]
    ["/card"    "Show agent card"]
    ["/session" "Show session info"]
    ["/clear"   "Clear session and reconnect"]
    ["/help"    "Show commands"]
    ["/quit"    "Exit console"]])
+
+(defn- parse-auth-args
+  "Parse /auth slash command argument string into a map.
+   Forms supported:
+     ''                                                  → automated using env vars
+     '<token>'                                            → manual token
+     '--client-id X [--client-secret Y] [--no-pkce]'     → automated with overrides"
+  [s]
+  (let [tokens (when (seq s) (str/split s #"\s+"))
+        result (loop [acc {} ts tokens]
+                 (if (empty? ts)
+                   acc
+                   (case (first ts)
+                     "--client-id"     (recur (assoc acc :client-id (second ts)) (drop 2 ts))
+                     "--client-secret" (recur (assoc acc :client-secret (second ts)) (drop 2 ts))
+                     "--no-pkce"       (recur (assoc acc :no-pkce? true) (drop 1 ts))
+                     ;; anything else as first token → treat as bare token (manual mode)
+                     (if (and (not (str/starts-with? (first ts) "--"))
+                              (not (contains? acc :token)))
+                       (recur (assoc acc :token (first ts)) (drop 1 ts))
+                       (recur acc (drop 1 ts))))))]
+    result))
+
+(defn- pending-from-result
+  "If a result is auth-required, build the pending-auth map (including the new
+   challenge so a follow-up /auth can re-run the OAuth flow without re-typing
+   flags). Returns nil if not auth-required."
+  [result]
+  (when (= "auth-required" (get-in result [:status :state]))
+    {:task-id (:id result)
+     :context-id (:contextId result)
+     :challenge (a2a/extract-auth-challenge result)}))
+
+(defn- resume-after-auth!
+  "Resume an auth-required task by sending a 'resume' message with the
+   secondary token. Reuses the agent's streaming capability. Updates
+   pending-auth: clears it on success, refreshes it (with new challenge)
+   if the agent issues another auth-required step."
+  [pending-auth-atom access-token task-id context-id]
+  (println)
+  (if (streaming-capable?)
+    (let [last-result (atom nil)]
+      (a2a/send-message-stream! "resume"
+        (fn [{:keys [event data] :as evt}]
+          (when-let [formatted (format-stream-event evt)]
+            (println formatted)
+            (flush))
+          (reset! last-result data))
+        :secondary-token access-token
+        :task-id task-id
+        :context-id context-id)
+      (reset! pending-auth-atom (pending-from-result @last-result)))
+    (let [result (util/with-spin "Authenticating..."
+                   (a2a/send-message! "resume"
+                     :secondary-token access-token
+                     :task-id task-id
+                     :context-id context-id))]
+      (print (format-send-result result {:show-artifact-name false}))
+      (flush)
+      (reset! pending-auth-atom (pending-from-result result)))))
 
 (def ^:private console-help
   (str/join "\n"
@@ -706,45 +763,70 @@
                   (println (jansi/a :faint "Bye."))
 
                   (str/starts-with? cmd "/auth")
-                  (let [token (str/trim (subs line 5))]
-                    (if (str/blank? token)
-                      (do (println (jansi/fg :yellow "Usage: /auth <access_token>"))
+                  (let [{:keys [token client-id client-secret no-pkce?]}
+                        (parse-auth-args (str/trim (subs line 5)))]
+                    (cond
+                      (nil? @pending-auth)
+                      (do (println (jansi/fg :yellow "認証待ちのタスクがありません"))
                           (recur 0))
-                      (if-let [{:keys [task-id context-id]} @pending-auth]
-                        (do
-                          (try
+
+                      ;; Automated flow: no positional token, derive token from OAuth
+                      (and (str/blank? token) (:challenge @pending-auth))
+                      (let [eff-client-id (or client-id (System/getenv "YAAC_A2A_CLIENT_ID"))
+                            eff-client-secret (or client-secret (System/getenv "YAAC_A2A_CLIENT_SECRET"))]
+                        (if (str/blank? eff-client-id)
+                          (do (println (jansi/fg :yellow "client-id が必要です。"))
+                              (println (jansi/a :faint "  例: /auth --client-id <id>"))
+                              (println (jansi/a :faint "  または環境変数: export YAAC_A2A_CLIENT_ID=..."))
+                              (recur 0))
+                          (do
+                            (try
+                              (let [{:keys [task-id context-id challenge]} @pending-auth
+                                    token-resp (oauth/run-auth-code-flow!
+                                                challenge
+                                                {:client-id eff-client-id
+                                                 :client-secret eff-client-secret
+                                                 :pkce? (not no-pkce?)}
+                                                (fn [step m]
+                                                  (case step
+                                                    :listening
+                                                    (println (jansi/a :faint (str "Listening on " (:redirect-uri m) " ...")))
+                                                    :browser-opened
+                                                    (do (println (jansi/a :faint (if (:opened? m)
+                                                                                   "Opened browser."
+                                                                                   "Could not open browser automatically. Visit:")))
+                                                        (when-not (:opened? m)
+                                                          (println (str "  " (:authorize-url m)))))
+                                                    :awaiting-code
+                                                    (println (jansi/a :faint (format "Waiting up to %ds for callback ..." (:timeout-secs m))))
+                                                    :exchanging
+                                                    (println (jansi/a :faint "Exchanging code for token ..."))
+                                                    :done
+                                                    (println (jansi/fg :green
+                                                              (str "Token obtained"
+                                                                   (when (:expires-in m)
+                                                                     (str " (expires in " (:expires-in m) "s)"))))))))
+                                    access-token (:access_token token-resp)]
+                                (resume-after-auth! pending-auth access-token task-id context-id))
+                              (catch Exception e
+                                (println (format-a2a-error e))))
                             (println)
-                            (if (streaming-capable?)
-                              (let [last-result (atom nil)]
-                                (a2a/send-message-stream! "resume"
-                                  (fn [{:keys [event data] :as evt}]
-                                    (when-let [formatted (format-stream-event evt)]
-                                      (println formatted)
-                                      (flush))
-                                    (reset! last-result data))
-                                  :secondary-token token
-                                  :task-id task-id
-                                  :context-id context-id)
-                                (when (= "auth-required" (get-in @last-result [:status :state]))
-                                  (reset! pending-auth {:task-id (:id @last-result)
-                                                        :context-id (:contextId @last-result)})))
-                              (let [result (util/with-spin "Authenticating..."
-                                             (a2a/send-message! "resume"
-                                               :secondary-token token
-                                               :task-id task-id
-                                               :context-id context-id))]
-                                (print (format-send-result result {:show-artifact-name false}))
-                                (flush)
-                                (if (= "auth-required" (get-in result [:status :state]))
-                                  (reset! pending-auth {:task-id (:id result)
-                                                        :context-id (:contextId result)})
-                                  (reset! pending-auth nil))))
+                            (recur 0))))
+
+                      ;; Manual flow: token supplied
+                      (seq token)
+                      (do
+                        (let [{:keys [task-id context-id]} @pending-auth]
+                          (try
+                            (resume-after-auth! pending-auth token task-id context-id)
                             (catch Exception e
-                              (println (format-a2a-error e))))
-                          (println)
-                          (recur 0))
-                        (do (println (jansi/fg :yellow "認証待ちのタスクがありません"))
-                            (recur 0)))))
+                              (println (format-a2a-error e)))))
+                        (println)
+                        (recur 0))
+
+                      :else
+                      (do (println (jansi/fg :yellow "Usage: /auth [<token> | --client-id <id> [--client-secret <s>] [--no-pkce]]"))
+                          (recur 0))))
 
                   (= cmd "/card")
                   (do (let [s (a2a/current-session)
@@ -803,19 +885,16 @@
                             (flush))
                           (reset! last-result data)))
                       ;; Check for auth-required in streaming result
-                      (when (= "auth-required" (get-in @last-result [:status :state]))
-                        (reset! pending-auth {:task-id (:id @last-result)
-                                              :context-id (:contextId @last-result)})
+                      (when-let [pending (pending-from-result @last-result)]
+                        (reset! pending-auth pending)
                         ;; Clear session task-id so next regular message starts a new task
                         (a2a/clear-task-id!)))
                     (let [result (util/with-spin "Processing..."
                                    (a2a/send-message! line))]
                       (print (format-send-result result {:show-artifact-name false}))
                       (flush)
-                      ;; Check for auth-required
-                      (when (= "auth-required" (get-in result [:status :state]))
-                        (reset! pending-auth {:task-id (:id result)
-                                              :context-id (:contextId result)})
+                      (when-let [pending (pending-from-result result)]
+                        (reset! pending-auth pending)
                         ;; Clear session task-id so next regular message starts a new task
                         (a2a/clear-task-id!))))
                   (catch Exception e
