@@ -41,6 +41,26 @@
   (when-let [session (load-session)]
     (save-session! (dissoc session :task-id))))
 
+(def ^:private terminal-task-states
+  "Task states for which the broker rejects further message/send on the same taskId
+   (RequestHandler.validateTask: 'Task has reached terminal state.')."
+  #{"completed" "failed" "canceled" "rejected"})
+
+(defn- terminal-result? [result]
+  (and (map? result)
+       (contains? terminal-task-states (get-in result [:status :state]))))
+
+(defn- persist-session-ids!
+  "Persist contextId from response (always) and taskId (only if task is still live).
+   When the task has reached a terminal state, drop :task-id so the next send
+   starts a new task under the same context."
+  [session result]
+  (let [terminal? (terminal-result? result)]
+    (save-session! (cond-> session
+                     (:contextId result)                 (assoc :context-id (:contextId result))
+                     (and (:id result) (not terminal?))  (assoc :task-id (:id result))
+                     terminal?                           (dissoc :task-id)))))
+
 ;; JSON-RPC helpers
 (defn- make-request [method params id]
   {:jsonrpc "2.0"
@@ -127,10 +147,7 @@
                  ctx (assoc :contextId ctx)
                  tid (assoc :taskId tid))
         result (jsonrpc-post! url "message/send" params :bearer-token bearer)]
-    ;; Save context-id and task-id from response for conversation continuity
-    (save-session! (cond-> session
-                     (:contextId result) (assoc :context-id (:contextId result))
-                     (:id result)        (assoc :task-id (:id result))))
+    (persist-session-ids! session result)
     result))
 
 (defn get-task!
@@ -218,15 +235,23 @@
 
                          :else
                          (recur (rest ls) event-type data-buf result)))))]
-      (doseq [{:keys [event data]} events]
-        (let [parsed (try (json/read-value data json/keyword-keys-object-mapper)
-                          (catch Exception _ data))]
-          (reset! last-result parsed)
-          (event-fn {:event event :data parsed})))
-      ;; Save context-id and task-id from last result
-      (when-let [r @last-result]
-        (when (map? r)
-          (save-session! (cond-> session
-                           (:contextId r) (assoc :context-id (:contextId r))
-                           (:id r)        (assoc :task-id (:id r))))))
+      ;; Track terminal state across all events — the last event may be an
+      ;; artifact-update without a status field, but an earlier status-update
+      ;; could have signaled terminal. We collapse both into the saved session.
+      (let [saw-terminal? (atom false)]
+        (doseq [{:keys [event data]} events]
+          (let [parsed (try (json/read-value data json/keyword-keys-object-mapper)
+                            (catch Exception _ data))]
+            (reset! last-result parsed)
+            (when (terminal-result? parsed)
+              (reset! saw-terminal? true))
+            (event-fn {:event event :data parsed})))
+        (when-let [r @last-result]
+          (when (map? r)
+            ;; If any event signaled terminal, fabricate a terminal-shaped result
+            ;; so persist-session-ids! drops :task-id regardless of last event shape.
+            (persist-session-ids! session
+                                  (if @saw-terminal?
+                                    (assoc r :status {:state "completed"})
+                                    r)))))
       @last-result)))
