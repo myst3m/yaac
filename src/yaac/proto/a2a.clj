@@ -46,20 +46,52 @@
    (RequestHandler.validateTask: 'Task has reached terminal state.')."
   #{"completed" "failed" "canceled" "rejected"})
 
+(def ^:private context-ttl-ms
+  "Broker-side hardcoded TTL for context/task entries in the A2A connector
+   (mule4-a2a-connector ServerAgent.TASK_OS_TTL = 1 day). After this elapses
+   the broker drops the conversation and rejects sends with 'contextId not found'."
+  (* 24 60 60 1000))
+
 (defn- terminal-result? [result]
   (and (map? result)
        (contains? terminal-task-states (get-in result [:status :state]))))
 
+(defn- now-ms [] (System/currentTimeMillis))
+
+(defn context-age-ms
+  "Milliseconds since :context-created-at, or nil if no context is established."
+  [session]
+  (when-let [t (:context-created-at session)]
+    (- (now-ms) t)))
+
+(defn context-expired?
+  "True when the current context is older than the broker TTL and the next send
+   is likely to be rejected with 'contextId not found'."
+  [session]
+  (when-let [age (context-age-ms session)]
+    (> age context-ttl-ms)))
+
+(defn- maybe-warn-expired-context! [session]
+  (when (context-expired? session)
+    (binding [*out* *err*]
+      (println (format "Warning: context-id is %d hours old, exceeding the broker's 24h TTL. The next send may fail with 'contextId not found'. Run 'yaac a2a init <agent>' to start a fresh conversation."
+                       (long (/ (context-age-ms session) (* 60 60 1000))))))))
+
 (defn- persist-session-ids!
   "Persist contextId from response (always) and taskId (only if task is still live).
-   When the task has reached a terminal state, drop :task-id so the next send
-   starts a new task under the same context."
+   Stamps :context-created-at the first time a contextId appears (or when the
+   broker hands back a different one). When the task has reached a terminal
+   state, drop :task-id so the next send starts a new task under the same
+   context."
   [session result]
-  (let [terminal? (terminal-result? result)]
+  (let [terminal? (terminal-result? result)
+        new-ctx (:contextId result)
+        ctx-changed? (and new-ctx (not= new-ctx (:context-id session)))]
     (save-session! (cond-> session
-                     (:contextId result)                 (assoc :context-id (:contextId result))
-                     (and (:id result) (not terminal?))  (assoc :task-id (:id result))
-                     terminal?                           (dissoc :task-id)))))
+                     new-ctx                              (assoc :context-id new-ctx)
+                     ctx-changed?                         (assoc :context-created-at (now-ms))
+                     (and (:id result) (not terminal?))   (assoc :task-id (:id result))
+                     terminal?                            (dissoc :task-id)))))
 
 ;; JSON-RPC helpers
 (defn- make-request [method params id]
@@ -125,6 +157,7 @@
   (let [session (current-session)
         _ (when-not session
             (throw (ex-info "No session. Run 'yaac a2a init <url>' first." {})))
+        _ (maybe-warn-expired-context! session)
         url (:url session)
         bearer (or bearer-token (:bearer-token session))
         ctx (or context-id (:context-id session))
@@ -176,6 +209,7 @@
   (let [session (current-session)
         _ (when-not session
             (throw (ex-info "No session. Run 'yaac a2a init <url>' first." {})))
+        _ (maybe-warn-expired-context! session)
         url (:url session)
         bearer (or bearer-token (:bearer-token session))
         ctx (or context-id (:context-id session))

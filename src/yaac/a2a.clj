@@ -519,11 +519,27 @@
          (assoc card :url (:url session))
          card)])))
 
+(defn- format-context-age
+  "Render context age as a compact human string with a TTL warning marker
+   ('!' suffix when older than 24h — the broker's hardcoded entry TTL)."
+  [session]
+  (if-let [age-ms (a2a/context-age-ms session)]
+    (let [mins  (long (/ age-ms 60000))
+          hours (long (/ mins 60))
+          base  (cond
+                  (< mins 1)  "<1m"
+                  (< mins 60) (str mins "m")
+                  (< hours 24) (format "%dh%02dm" hours (mod mins 60))
+                  :else (format "%dd%02dh" (long (/ hours 24)) (mod hours 24)))]
+      (str base (when (a2a/context-expired? session) " (expired)")))
+    "-"))
+
 (defn a2a-session [opts]
-  (if-let [{:keys [url agent-card context-id]} (a2a/current-session)]
+  (if-let [{:keys [url agent-card context-id] :as session} (a2a/current-session)]
     [{:url url
       :agent-name (:name agent-card "Unknown")
-      :context-id (or context-id "-")}]
+      :context-id (or context-id "-")
+      :age (format-context-age session)}]
     [{:message "No active session."}]))
 
 (defn a2a-clear [opts]
@@ -823,7 +839,7 @@
    ["|card" {:handler (with-session a2a-card false)
              :formatter format-card-rich}]
    ["|session" {:handler (with-session a2a-session false)
-                 :fields [:url :agent-name :context-id]}]
+                 :fields [:url :agent-name :context-id :age]}]
    ["|console" {:help true}]
    ["|console|{*args}" {:handler (with-session a2a-console false)
                          :output-format :raw}]
