@@ -468,7 +468,13 @@
 (def outbound-policies #{"circuit-breaker"
                           "credential-injection-oauth2-obo"
                           "credential-injection-basic-auth"
-                          "credential-injection-api-key"})
+                          "credential-injection-api-key"
+                          ;; A2A In-Task Authorization Code policy — runs on the
+                          ;; gateway egress, strips the OAuth token from the A2A
+                          ;; DataPart and moves it into Authorization for the
+                          ;; backend agent.
+                          "intask-authorization-code-policy"
+                          "intask-authorization-code-policy-flex"})
 
 (defn- outbound-policy? [asset-id]
   (contains? outbound-policies asset-id))
