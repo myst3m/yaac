@@ -44,12 +44,13 @@
           (when help-all
             ["Resources:"
              ""
-             " - organization"
-             " - environment"
+             " - organization (org)"
+             " - environment (env)"
              " - vpn"
              " - private-space (ps)"
              " - api"
              " - policy"
+             " - gateway (gw)            Managed Flex Gateway (CloudHub 2.0)"
              " - invitation"
              " - connected-app"
              " - client-provider (cp)"
@@ -74,6 +75,13 @@
              "   - --region:            AWS region (e.g., ap-northeast-1)"
              "   - --cidr-block:        CIDR block (e.g., 10.0.0.0/24)"
              "   - --reserved-cidrs:    Reserved CIDRs (comma-separated)"
+             "  gateway (Managed Flex Gateway):"
+             "   - -M / --managed:      required flag to select managed mode"
+             "   - --target ps:<name>:  Private Space target (or rtf:<name>)"
+             "   - --runtime-version:   required (e.g., 1.9.9)"
+             "   - --size:              small | large (default: small) — requires matching license"
+             "   - --public-url:        required full URL on an env-allowed domain"
+             "   - --channel:           edge | lts (default: lts)"
              ""])
           ["Example:"
            ""
@@ -91,6 +99,16 @@
            ""
            "# Create VPN connection"
            "  > yaac create vpn MuleSoft rootps my-vpn --remote-ip 1.2.3.4 --routes 192.168.0.0/24 --psk1 key1 --psk2 key2"
+           ""
+           "# Create Managed Flex Gateway (size requires a matching license)"
+           "  > yaac create gateway T1 Sandbox flex-general -M --target ps:rootps \\"
+           "                       --runtime-version 1.9.9 --size large \\"
+           "                       --public-url https://flex-general.pnwfdv.jpn-e1.cloudhub.io"
+           ""
+           "# Same with --channel edge for preview runtime"
+           "  > yaac create gateway T1 Sandbox flex-edge -M --target ps:rootps \\"
+           "                       --runtime-version 1.9.9 --size small --channel edge \\"
+           "                       --public-url https://flex-edge.pnwfdv.jpn-e1.cloudhub.io"
            ""])
          (str/join \newline))))
 
@@ -139,7 +157,7 @@
               [nil "--channel CHANNEL" "Release channel (edge or lts, default: lts)"]
               [nil "--runtime-version VERSION" "Flex Gateway runtime version"]
               [nil "--size SIZE" "Gateway size (small or large, default: small)"]
-              [nil "--public-url URLS" "Public URLs (comma-separated)"]
+              [nil "--public-url URL" "Public URL for the gateway. REQUIRED for managed flex gw. Must use one of the env's allowed domains (e.g., https://<name>.<ps-suffix>.<region>.cloudhub.io)."]
               [nil "--forward-ssl" "Forward SSL session"]
               [nil "--last-mile-security" "Enable last mile security"]
               [nil "--log-level LEVEL" "Log level (debug, info, warn, error, default: info)"]
@@ -735,15 +753,19 @@
                                    upstream-timeout connection-timeout]}]
   (let [org-id (org->id org)
         env-id (env->id org-id env)
+        ;; Managed gateways auto-assign a public URL when ingress.publicUrl is
+        ;; omitted, so only include the key when the caller provided one.
+        ingress (cond-> {}
+                  (seq public-url)   (assoc :publicUrl public-url)
+                  forward-ssl        (assoc :forwardSslSession true)
+                  last-mile-security (assoc :lastMileSecurity true))
         body {:name name
               :targetId target-id
               :releaseChannel (str/lower-case (or channel "lts"))
               :runtimeVersion runtime-version
               :size (str/lower-case (or size "small"))
               :configuration
-              {:ingress (cond-> {:publicUrl (or public-url "")}
-                          forward-ssl (assoc :forwardSslSession true)
-                          last-mile-security (assoc :lastMileSecurity true))
+              {:ingress ingress
                :logging (cond-> {:level (str/lower-case (or log-level "info"))}
                           forward-logs (assoc :forwardLogs true))
                :properties {:upstreamResponseTimeout (if upstream-timeout (parse-long upstream-timeout) 60000)
@@ -789,10 +811,17 @@
       (throw (e/invalid-arguments "Target is required (--target ps:<name> or rtf:<name>)" {}))
 
       (not runtime-version)
-      (throw (e/invalid-arguments "Runtime version is required (--runtime-version <version>, e.g., 1.9.3)" {}))
+      (throw (e/invalid-arguments "Runtime version is required (--runtime-version <version>, e.g., 1.9.9)" {}))
 
-      (not (:public-url opts))
-      (throw (e/invalid-arguments "Public URL is required (--public-url <url>)" {}))
+      (str/blank? (:public-url opts))
+      (throw (e/invalid-arguments
+              (str "--public-url is required for a Managed Flex Gateway.\n"
+                   "  It must be a full URL whose host is in one of the env's allowed domains\n"
+                   "  (typically '<name>.<ps-suffix>.<region>.cloudhub.io').\n"
+                   "  Example: --public-url https://flex-general.pnwfdv.jpn-e1.cloudhub.io\n"
+                   "  Pass an obviously wrong URL once if you want Anypoint to enumerate the\n"
+                   "  allowed domains in the error response.")
+              {}))
 
       :else
       (let [target-id (parse-target org target)]
