@@ -6,6 +6,7 @@
            [com.dylibso.chicory.runtime  Module ExportFunction Instance])
   (:require [yaac.core :as yc :refer [*org* *env* *deploy-target* *no-cache* *no-multi-thread* *quiet* *console* global-base-url]]
             [yaac.core.routing]
+            [yaac.connector]
             [yaac.util :as util]
             [reitit.core :as r]
             [clojure.string :as str]
@@ -75,6 +76,7 @@
         "  logs       app ...                                        View application logs"
         "  a2a        init|send|console ...                          A2A (Agent-to-Agent) protocol client"
         "  mcp        init|tool|call ...                             MCP (Model Context Protocol) client"
+        "  connector  list|show|search|validate ...                  Mule connector schema browser + validator"
         "  otel       <port> [--ssl --cert --key]                   OTLP collector (logs/traces)"
         ""
         "Examples:"
@@ -103,6 +105,12 @@
         "  yaac mcp init T1 Sandbox my-mcp-app"
         "  yaac mcp tool                               # list tools"
         "  yaac mcp call list-orders status=ORDERED    # HTTPie-style args"
+        ""
+        "  # Mule connector schema / validator (uses ~/.mulet/schema)"
+        "  yaac connector list"
+        "  yaac connector show http request            # parameters of http:request"
+        "  yaac connector search timeout"
+        "  yaac connector validate src/main/mule/main.xml"
         ""
         "  # Logs / OTel"
         "  yaac logs app T1 Production my-app"
@@ -211,6 +219,8 @@
                        yaac.mcp/route
                        ;; A2A
                        yaac.a2a/route
+                       ;; Connector schema browser / validator
+                       yaac.connector/route
                        ;; DataWeave
                        ;;yaac.dw/route
                        ]))
