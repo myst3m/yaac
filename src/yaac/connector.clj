@@ -1,9 +1,9 @@
 (ns yaac.connector
-  "Mule connector schema browser + Mule XML validator backed by mulet's
-  on-disk schema cache (~/.mulet/schema/).
+  "Mule connector schema browser + Mule XML validator.
 
-  Read-only consumer: yaac never writes to mulet's cache. If the cache
-  is missing, prompt the user to run `mulet schema collect`."
+  Schema data lives in ~/.mulet/schema/ (shared with the mulet CLI).
+  `yaac connector collect` populates it directly from the local Maven
+  repository, so yaac does not depend on the mulet binary."
   (:require [clojure.data.xml :as dx]
             [clojure.edn :as edn]
             [clojure.java.io :as io]
@@ -33,8 +33,8 @@
 (defn- ensure-cache-available! []
   (when-not (.exists (io/file registry-file))
     (throw (e/invalid-arguments
-             (str "mulet schema cache not found at " mulet-cache-dir
-                  ". Run `mulet schema collect` first to populate the cache.")
+             (str "Connector schema cache not found at " mulet-cache-dir
+                  ". Run `yaac connector collect` first to populate it.")
              {:cache-dir mulet-cache-dir}))))
 
 (defn load-registry
@@ -413,7 +413,7 @@
   (let [f (io/file mule-xml-path)
         base (some-> f .getParentFile)
         ;; Walk up looking for src/main directory structure
-        parents (take 6 (iterate #(some-> % .getParentFile) base))
+        parents (take 6 (iterate #(some-> ^java.io.File % .getParentFile) base))
         roots (->> parents
                    (keep (fn [p]
                            (when p
@@ -600,6 +600,132 @@
       args)))
 
 ;; ---------------------------------------------------------------------------
+;; collect — extract connector schemas from the local Maven repository
+;; ---------------------------------------------------------------------------
+
+(def ^:private m2-repo
+  (or (System/getenv "M2_REPO")
+      (str (System/getProperty "user.home") "/.m2/repository")))
+
+(def ^:private uuid-segment-re
+  #"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+
+(defn- mule-plugin-jar? [^java.io.File f]
+  (and (.isFile f)
+       (str/ends-with? (.getName f) "-mule-plugin.jar")))
+
+(defn- m2-coordinates
+  "Derive [group artifact version] from a JAR path under the m2 repo.
+   m2 layout: <repo>/<group/as/dirs>/<artifact>/<version>/<file>.jar"
+  [^java.io.File jar]
+  (let [rel (-> (.getCanonicalPath jar)
+                (str/replace-first (str (.getCanonicalPath (io/file m2-repo)) "/") ""))
+        segs (str/split rel #"/")
+        n (count segs)]
+    (when (>= n 4)
+      (let [version (nth segs (- n 2))
+            artifact (nth segs (- n 3))
+            group (str/join "." (take (- n 3) segs))]
+        [group artifact version]))))
+
+(defn- anypoint-custom-connector?
+  "Anypoint Exchange custom connectors live under a UUID group id — their
+   schema format differs, so skip them like mulet does."
+  [group]
+  (boolean (some #(re-matches uuid-segment-re %)
+                 (str/split (str group) #"\."))))
+
+(defn- parse-version
+  "\"1.11.0\" -> [1 11 0]; non-numeric parts sort low."
+  [v]
+  (mapv #(or (parse-long %) 0)
+        (re-seq #"\d+" (str v))))
+
+(defn- find-mule-plugin-jars []
+  (let [repo (io/file m2-repo)]
+    (when (.isDirectory repo)
+      (->> (file-seq repo)
+           (filter mule-plugin-jar?)
+           (keep (fn [jar]
+                   (when-let [[group artifact version] (m2-coordinates jar)]
+                     (when-not (anypoint-custom-connector? group)
+                       {:jar jar :group group :artifact artifact :version version}))))))))
+
+(defn- latest-per-artifact
+  "Keep only the highest version of each artifact."
+  [entries]
+  (->> entries
+       (group-by :artifact)
+       (vals)
+       (mapv (fn [versions]
+               ;; version vectors are compared with `compare`; max-key needs
+               ;; a Number, so sort and take the last instead.
+               (last (sort-by #(parse-version (:version %)) versions))))))
+
+(defn- jar-schema-entry
+  "Find the schema XML entry inside a connector JAR.
+   Primary: META-INF/*-extension-descriptions.xml
+   Fallback: META-INF/module-*.xml (XML-SDK connectors, e.g. SAP), excluding *-catalog."
+  [^java.util.zip.ZipFile zf]
+  (let [entries (enumeration-seq (.entries zf))
+        names (map (fn [^java.util.zip.ZipEntry e] (.getName e)) entries)
+        primary (some #(when (re-find #"extension-descriptions\.xml$" %) %) names)
+        fallback (some #(when (re-find #"(?i)/module-(?!.*-catalog).*\.xml$" (str "/" %)) %)
+                       names)]
+    (or primary fallback)))
+
+(defn- artifact->short-name
+  "mule-http-connector -> http; munit-tools -> munit-tools."
+  [artifact]
+  (-> artifact
+      (str/replace #"^mule-" "")
+      (str/replace #"-connector$" "")))
+
+(defn- collect-one!
+  "Extract the schema XML from one connector JAR into the cache dir.
+   Returns a result map, or nil if no schema entry was found."
+  [{:keys [^java.io.File jar artifact version]}]
+  (with-open [zf (java.util.zip.ZipFile. jar)]
+    (when-let [entry-name (jar-schema-entry zf)]
+      (let [^java.util.zip.ZipFile zf zf
+            xml (slurp (.getInputStream zf (.getEntry zf entry-name)))
+            ;; tag the version into the XML like mulet does
+            xml* (if (str/starts-with? xml "<?xml")
+                   (str/replace-first xml #"\?>" (str "?>\n<!-- Version: " version " -->"))
+                   (str "<!-- Version: " version " -->\n" xml))
+            out-name (str artifact ".xml")
+            out-file (io/file mulet-cache-dir out-name)]
+        (.mkdirs (io/file mulet-cache-dir))
+        (spit out-file xml*)
+        {:name (artifact->short-name artifact)
+         :artifact-id artifact
+         :version version
+         :schema-file out-name}))))
+
+(defn connector-collect
+  "Scan the local Maven repository for *-mule-plugin.jar, extract each
+   connector's schema XML into ~/.mulet/schema/, and (re)write registry.edn."
+  [_opts]
+  (let [jars (find-mule-plugin-jars)]
+    (when (empty? jars)
+      (throw (e/invalid-arguments
+               (str "No *-mule-plugin.jar found under " m2-repo
+                    ". Build or resolve a Mule app first to populate ~/.m2.")
+               {:m2-repo m2-repo})))
+    (let [collected (->> (latest-per-artifact jars)
+                         (keep collect-one!)
+                         (sort-by :name)
+                         vec)]
+      (spit (io/file mulet-cache-dir "registry.edn")
+            (pr-str {:connectors collected}))
+      (invalidate-cache!)
+      (conj (vec collected)
+            {:name "—"
+             :artifact-id (str (count collected) " connectors")
+             :version "written to"
+             :schema-file mulet-cache-dir}))))
+
+;; ---------------------------------------------------------------------------
 ;; CLI scaffolding
 ;; ---------------------------------------------------------------------------
 
@@ -609,8 +735,8 @@
           ["Usage: connector <command> [options]"
            ""
            "Mule connector schema browser + property validator."
-           "Backed by mulet's on-disk cache at ~/.mulet/schema/ — run"
-           "`mulet schema collect` first to populate it."
+           "Schema cache lives at ~/.mulet/schema/ — run `yaac connector"
+           "collect` once to populate it from your local Maven repository."
            ""
            "Options:"
            ""
@@ -619,6 +745,7 @@
           (when help-all
             ["Commands:"
              ""
+             "  collect                              Extract connector schemas from ~/.m2 into the cache"
              "  list                                 List all connectors"
              "  show <name>                          Show configs/operations/sources of a connector"
              "  show <name> <element>                Show parameters of one element"
@@ -628,11 +755,17 @@
              ""
              "Examples:"
              ""
+             "  yaac connector collect"
              "  yaac connector list"
              "  yaac connector show http"
              "  yaac connector show http request"
              "  yaac connector search timeout"
              "  yaac connector validate src/main/mule/main.xml"
+             ""
+             "collect: scans ~/.m2/repository (override with $M2_REPO) for"
+             "  *-mule-plugin.jar, keeps the latest version of each, and extracts"
+             "  META-INF/*-extension-descriptions.xml into ~/.mulet/schema/."
+             "  Anypoint Exchange custom connectors (UUID group ids) are skipped."
              ""
              "Validator coverage (best-effort, name-level only):"
              "  - Unresolved ${...} placeholders (configuration-properties / env / sys)"
@@ -658,6 +791,8 @@
 (def route
   ["connector" {:options options :usage usage}
    ["" {:help true}]
+   ["|collect" {:handler connector-collect
+                :fields [:name :version :artifact-id :schema-file]}]
    ["|list" {:handler connector-list
              :fields [:name :version :configs :operations :sources :artifact-id]}]
    ["|show" {:help true}]

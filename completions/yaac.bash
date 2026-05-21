@@ -31,7 +31,7 @@ _yaac_completions() {
     local logs_subcmds="app"
     local a2a_subcmds="init send console task cancel card session clear"
     local mcp_subcmds="init tool tools call session clear"
-    local connector_subcmds="list show search validate refresh"
+    local connector_subcmds="collect list show search validate refresh"
     local http_subcmds="get post put patch delete"
     local clear_subcmds="org"
 
