@@ -1,9 +1,9 @@
 (ns yaac.connector
   "Mule connector schema browser + Mule XML validator.
 
-  Schema data lives in ~/.mulet/schema/ (shared with the mulet CLI).
-  `yaac connector collect` populates it directly from the local Maven
-  repository, so yaac does not depend on the mulet binary."
+  Schema data lives in ~/.yaac/schema/ — fully independent of the mulet
+  CLI. `yaac connector collect` populates it directly from the local
+  Maven repository."
   (:require [clojure.data.xml :as dx]
             [clojure.edn :as edn]
             [clojure.java.io :as io]
@@ -13,14 +13,14 @@
             [yaac.error :as e]
             [yaac.yaml :as yaml]))
 
-(def mulet-cache-dir
-  (str (System/getProperty "user.home") "/.mulet/schema"))
+(def schema-cache-dir
+  (str (System/getProperty "user.home") "/.yaac/schema"))
 
 (def yaac-cache-file
   (str (System/getProperty "user.home") "/.yaac/connector-schema.nippy"))
 
 (def ^:private registry-file
-  (str mulet-cache-dir "/registry.edn"))
+  (str schema-cache-dir "/registry.edn"))
 
 ;; ---------------------------------------------------------------------------
 ;; Registry / XML parsing
@@ -33,9 +33,9 @@
 (defn- ensure-cache-available! []
   (when-not (.exists (io/file registry-file))
     (throw (e/invalid-arguments
-             (str "Connector schema cache not found at " mulet-cache-dir
+             (str "Connector schema cache not found at " schema-cache-dir
                   ". Run `yaac connector collect` first to populate it.")
-             {:cache-dir mulet-cache-dir}))))
+             {:cache-dir schema-cache-dir}))))
 
 (defn load-registry
   "Read registry.edn and return the list of connector entries.
@@ -90,7 +90,7 @@
          (mapv parse-element))))
 
 (defn parse-extension-xml
-  "Parse a mulet-cached connector XML and return
+  "Parse a cached connector schema XML and return
    {:configs [..] :operations [..] :sources [..] :types [..]}."
   [xml-string]
   (let [root (dx/parse-str xml-string)]
@@ -102,7 +102,7 @@
 (defn- load-connector-from-disk
   "Read & parse a single connector XML."
   [{:keys [name schema-file] :as entry}]
-  (let [path (str mulet-cache-dir "/" schema-file)
+  (let [path (str schema-cache-dir "/" schema-file)
         f (io/file path)]
     (if (.exists f)
       (merge entry (parse-extension-xml (slurp f)))
@@ -200,7 +200,7 @@
 ;; ---------------------------------------------------------------------------
 
 (defn connector-list
-  "List all connectors known to mulet's cache."
+  "List all connectors known to the schema cache."
   [_opts]
   (->> (:connectors (schema-index))
        (sort-by :name)
@@ -544,7 +544,7 @@
                 (swap! missing-connectors conj conn-name)
                 [{:severity "info"
                   :kind :connector-not-in-cache
-                  :message (str "Connector '" conn-name "' is not in ~/.mulet/schema (run `mulet schema collect`)")
+                  :message (str "Connector '" conn-name "' is not in ~/.yaac/schema (run `yaac connector collect`)")
                   :connector conn-name}])))))
       (xml-elements root))))
 
@@ -630,7 +630,7 @@
 
 (defn- anypoint-custom-connector?
   "Anypoint Exchange custom connectors live under a UUID group id — their
-   schema format differs, so skip them like mulet does."
+   schema format differs, so skip them."
   [group]
   (boolean (some #(re-matches uuid-segment-re %)
                  (str/split (str group) #"\."))))
@@ -689,13 +689,13 @@
     (when-let [entry-name (jar-schema-entry zf)]
       (let [^java.util.zip.ZipFile zf zf
             xml (slurp (.getInputStream zf (.getEntry zf entry-name)))
-            ;; tag the version into the XML like mulet does
+            ;; tag the resolved version into the XML as a comment
             xml* (if (str/starts-with? xml "<?xml")
                    (str/replace-first xml #"\?>" (str "?>\n<!-- Version: " version " -->"))
                    (str "<!-- Version: " version " -->\n" xml))
             out-name (str artifact ".xml")
-            out-file (io/file mulet-cache-dir out-name)]
-        (.mkdirs (io/file mulet-cache-dir))
+            out-file (io/file schema-cache-dir out-name)]
+        (.mkdirs (io/file schema-cache-dir))
         (spit out-file xml*)
         {:name (artifact->short-name artifact)
          :artifact-id artifact
@@ -704,7 +704,7 @@
 
 (defn connector-collect
   "Scan the local Maven repository for *-mule-plugin.jar, extract each
-   connector's schema XML into ~/.mulet/schema/, and (re)write registry.edn."
+   connector's schema XML into ~/.yaac/schema/, and (re)write registry.edn."
   [_opts]
   (let [jars (find-mule-plugin-jars)]
     (when (empty? jars)
@@ -716,14 +716,14 @@
                          (keep collect-one!)
                          (sort-by :name)
                          vec)]
-      (spit (io/file mulet-cache-dir "registry.edn")
+      (spit (io/file schema-cache-dir "registry.edn")
             (pr-str {:connectors collected}))
       (invalidate-cache!)
       (conj (vec collected)
             {:name "—"
              :artifact-id (str (count collected) " connectors")
              :version "written to"
-             :schema-file mulet-cache-dir}))))
+             :schema-file schema-cache-dir}))))
 
 ;; ---------------------------------------------------------------------------
 ;; CLI scaffolding
@@ -735,7 +735,7 @@
           ["Usage: connector <command> [options]"
            ""
            "Mule connector schema browser + property validator."
-           "Schema cache lives at ~/.mulet/schema/ — run `yaac connector"
+           "Schema cache lives at ~/.yaac/schema/ — run `yaac connector"
            "collect` once to populate it from your local Maven repository."
            ""
            "Options:"
@@ -764,7 +764,7 @@
              ""
              "collect: scans ~/.m2/repository (override with $M2_REPO) for"
              "  *-mule-plugin.jar, keeps the latest version of each, and extracts"
-             "  META-INF/*-extension-descriptions.xml into ~/.mulet/schema/."
+             "  META-INF/*-extension-descriptions.xml into ~/.yaac/schema/."
              "  Anypoint Exchange custom connectors (UUID group ids) are skipped."
              ""
              "Validator coverage (best-effort, name-level only):"
@@ -772,9 +772,9 @@
              "  - config-ref pointing to undefined config"
              "  - flow-ref pointing to undefined flow/sub-flow"
              "  - Unknown attribute on a recognised connector element"
-             "  - Connector namespace used in XML but not in ~/.mulet/schema"
+             "  - Connector namespace used in XML but not in ~/.yaac/schema"
              ""
-             "Not supported (mulet's schema cache carries names + descriptions only):"
+             "Not supported (the schema cache carries names + descriptions only):"
              "  - Parameter type checking (string/number/boolean)"
              "  - Required parameter enforcement"
              "  - Enum value validation"
