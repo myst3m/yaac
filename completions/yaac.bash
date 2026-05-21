@@ -15,7 +15,7 @@ _yaac_completions() {
     local base_urls="https://anypoint.mulesoft.com https://eu1.anypoint.mulesoft.com https://gov.anypoint.mulesoft.com https://jp1.platform.mulesoft.com"
 
     # All main commands (including aliases)
-    local commands="login get list ls upload up deploy dep delete del rm remove create new describe desc update upd download dl configure config cfg auth http logs build a2a mcp clear"
+    local commands="login get list ls upload up deploy dep delete del rm remove create new describe desc update upd download dl configure config cfg auth http logs build a2a mcp connector clear"
 
     # --- Subcommands per canonical command ---
     local get_subcmds="org organization env environment app application api api-instance asset proxy gw gateway rtf runtime-fabric rtt runtime-target serv server ps private-space sg secret-group ent entitlement np node-port cont contract capp connected-app ca scope scopes user team conn connection policy pol idp cp client-provider metrics alert"
@@ -31,6 +31,7 @@ _yaac_completions() {
     local logs_subcmds="app"
     local a2a_subcmds="init send console task cancel card session clear"
     local mcp_subcmds="init tool tools call session clear"
+    local connector_subcmds="list show search validate refresh"
     local http_subcmds="get post put patch delete"
     local clear_subcmds="org"
 
@@ -68,6 +69,7 @@ _yaac_completions() {
             build) echo "build" ;;
             a2a) echo "a2a" ;;
             mcp) echo "mcp" ;;
+            connector) echo "connector" ;;
             clear) echo "clear" ;;
             login) echo "login" ;;
             *) echo "" ;;
@@ -272,6 +274,15 @@ _yaac_completions() {
                 COMPREPLY=($(compgen -W "$mcp_subcmds" -- "$cur"))
             elif [[ "$cur" == -* ]]; then
                 COMPREPLY=($(compgen -W "$global_opts $mcp_opts" -- "$cur"))
+            fi
+            ;;
+        connector)
+            if [[ -z "$subcmd" && "$cur" != -* ]]; then
+                COMPREPLY=($(compgen -W "$connector_subcmds" -- "$cur"))
+            elif [[ "$subcmd" == "validate" && "$cur" != -* ]]; then
+                _filedir '@(xml)'
+            elif [[ "$cur" == -* ]]; then
+                COMPREPLY=($(compgen -W "$global_opts" -- "$cur"))
             fi
             ;;
         build)
