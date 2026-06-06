@@ -53,6 +53,8 @@ yaac deploy app my-app target=hy:leibniz
 | `download` | `dl` | APIプロキシをJARでダウンロード | [doc/download.md](doc/download.md) |
 | `config` | `cfg` | デフォルトorg/env/target設定、認証情報管理 | [doc/config.md](doc/config.md) |
 | `build` | - | 組み込みMavenでビルド | [doc/build.md](doc/build.md) |
+| `validate` | `val` | デプロイ前検証：未解決の `${...}` プロパティを検出 | [doc/validate.md](doc/validate.md) |
+| `connector` | - | Muleコネクタスキーマブラウザ（`collect`/`list`/`show`/`search`） | [doc/connector.md](doc/connector.md) |
 | `logs` | - | CH2.0アプリログ表示（プラットフォームAPI / JMXモジュール） | [doc/logs.md](doc/logs.md) |
 | `http` | - | デプロイ済みアプリにHTTPリクエスト | [doc/http.md](doc/http.md) |
 | `auth` | - | OAuth2フロー（認可コード、クライアント認証、Azure） | [doc/auth.md](doc/auth.md) |
@@ -85,6 +87,9 @@ yaac deploy app my-app target=rtf:k1 +http.port=8081 +db.host=oracle.local
 # マニフェストで一括デプロイ
 yaac deploy manifest deploy.yaml
 yaac deploy manifest deploy.yaml --dry-run
+
+# デプロイ前検証（値が与えられていないプロパティを事前検出）
+yaac validate target/my-app.jar +mule.env=ch2
 ```
 
 ## グローバルオプション

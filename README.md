@@ -49,6 +49,8 @@ yaac deploy app my-app target=hy:leibniz
 | `download` | `dl` | Download API proxy as JAR | [doc/download.md](doc/download.md) |
 | `config` | `cfg` | Set default org/env/target, manage credentials | [doc/config.md](doc/config.md) |
 | `build` | - | Run Maven goals with embedded Maven | [doc/build.md](doc/build.md) |
+| `validate` | `val` | Pre-deploy validation: detect unresolved `${...}` properties | [doc/validate.md](doc/validate.md) |
+| `connector` | - | Mule connector schema browser (`collect`/`list`/`show`/`search`) | [doc/connector.md](doc/connector.md) |
 | `logs` | - | View CH2.0 logs (platform API or JMX module) | [doc/logs.md](doc/logs.md) |
 | `http` | - | Send HTTP requests to deployed apps | [doc/http.md](doc/http.md) |
 | `auth` | - | OAuth2 flows (code, client credentials, Azure) | [doc/auth.md](doc/auth.md) |
@@ -92,6 +94,9 @@ yaac get org -F +org-type        # Add extra field
 
 # Deploy shorthand (org/asset/version auto-completed)
 yaac deploy app my-app target=hy:leibniz
+
+# Pre-deploy validation: catch unset properties before pushing
+yaac validate target/my-app.jar +mule.env=ch2
 ```
 
 ## Install
