@@ -15,7 +15,7 @@ _yaac_completions() {
     local base_urls="https://anypoint.mulesoft.com https://eu1.anypoint.mulesoft.com https://gov.anypoint.mulesoft.com https://jp1.platform.mulesoft.com"
 
     # All main commands (including aliases)
-    local commands="login get list ls upload up deploy dep delete del rm remove create new describe desc update upd download dl configure config cfg auth http logs build a2a mcp connector clear"
+    local commands="login get list ls upload up deploy dep delete del rm remove create new describe desc update upd download dl configure config cfg auth http logs build validate val a2a mcp connector clear"
 
     # --- Subcommands per canonical command ---
     local get_subcmds="org organization env environment app application api api-instance asset proxy gw gateway rtf runtime-fabric rtt runtime-target serv server ps private-space sg secret-group ent entitlement np node-port cont contract capp connected-app ca scope scopes user team conn connection policy pol idp cp client-provider metrics alert"
@@ -67,6 +67,7 @@ _yaac_completions() {
             http) echo "http" ;;
             logs) echo "logs" ;;
             build) echo "build" ;;
+            validate|val) echo "validate" ;;
             a2a) echo "a2a" ;;
             mcp) echo "mcp" ;;
             connector) echo "connector" ;;
@@ -290,6 +291,14 @@ _yaac_completions() {
                 COMPREPLY=($(compgen -W "$global_opts" -- "$cur"))
             else
                 COMPREPLY=($(compgen -W "clean compile package install test verify dependency:tree" -- "$cur"))
+            fi
+            ;;
+        validate)
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=($(compgen -W "$global_opts" -- "$cur"))
+            else
+                # target is a .jar / directory / .xml
+                _filedir '@(jar|xml)'
             fi
             ;;
         login)

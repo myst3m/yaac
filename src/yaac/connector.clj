@@ -1,17 +1,17 @@
 (ns yaac.connector
-  "Mule connector schema browser + Mule XML validator.
+  "Mule connector schema browser.
 
   Schema data lives in ~/.yaac/schema/ — fully independent of the mulet
   CLI. `yaac connector collect` populates it directly from the local
-  Maven repository."
+  Maven repository. App validation against these schemas lives in
+  yaac.validate."
   (:require [clojure.data.xml :as dx]
             [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]
             [taoensso.nippy :as nippy]
             [taoensso.timbre :as log]
-            [yaac.error :as e]
-            [yaac.yaml :as yaml]))
+            [yaac.error :as e]))
 
 (def schema-cache-dir
   (str (System/getProperty "user.home") "/.yaac/schema"))
@@ -159,7 +159,7 @@
 ;; Lookups
 ;; ---------------------------------------------------------------------------
 
-(defn- find-connector [name]
+(defn find-connector [name]
   (first (filter #(= name (:name %)) (:connectors (schema-index)))))
 
 (defn- element-categories
@@ -170,7 +170,7 @@
    [:source (:sources connector)]
    [:type (:types connector)]])
 
-(defn- camel->kebab
+(defn camel->kebab
   "camelCase / PascalCase -> kebab-case. Pure ASCII letters/digits."
   [s]
   (when s
@@ -186,7 +186,7 @@
       (= (camel->kebab schema-name) xml-local)
       (= schema-name (camel->kebab xml-local))))
 
-(defn- find-element
+(defn find-element
   "Find an element by name across configs/operations/sources/types in a connector,
    lenient about camelCase ↔ kebab-case."
   [connector el-name]
@@ -308,296 +308,6 @@
     (->> (:connectors (schema-index))
          (mapcat #(search-connector kw %))
          vec)))
-
-;; ---------------------------------------------------------------------------
-;; Mule XML validator
-;; ---------------------------------------------------------------------------
-
-(defn- xml-elements
-  "Walk an XML tree and emit every element (depth-first)."
-  [el]
-  (when (map? el)
-    (cons el (mapcat xml-elements (:content el)))))
-
-(defn- split-prefix
-  "Return the [namespace-prefix local-name] of a data.xml tag/attr keyword.
-
-  data.xml emits namespaced names as `:xmlns.<url-encoded-uri>/<local>`.
-  `namespace-prefix` here is the *raw* form (URL-encoded URI for namespaced
-  elements, nil for unqualified attributes). Use [[tag-connector]] to resolve
-  the URI to a connector name."
-  [tag]
-  (let [s (if (keyword? tag) (subs (str tag) 1) (str tag))
-        [a b] (str/split s #"/" 2)]
-    (if b [a b] [nil a])))
-
-(defn- decode-ns-uri
-  "Decode a data.xml namespace token (`xmlns.<url-encoded-uri>`) back to a URI string."
-  [s]
-  (when (and s (str/starts-with? s "xmlns."))
-    (try
-      (java.net.URLDecoder/decode (subs s (count "xmlns.")) "UTF-8")
-      (catch Exception _ nil))))
-
-(def ^:private mule-core-uri-prefixes
-  "Namespace URIs that are core Mule constructs, not user connectors."
-  ["http://www.mulesoft.org/schema/mule/core"
-   "http://www.mulesoft.org/schema/mule/ee/"
-   "http://www.mulesoft.org/schema/mule/documentation"])
-
-(defn- mule-core-uri? [uri]
-  (boolean (some #(str/starts-with? uri %) mule-core-uri-prefixes)))
-
-(defn- uri->connector-name
-  "Map a Mule schema namespace URI to a connector name (matched against the
-  registry). Returns nil for non-connector URIs (core/ee/documentation/etc.)
-  or unknown connectors."
-  [uri]
-  (when (and uri (not (mule-core-uri? uri)))
-    (let [;; expected form: http(s)://www.mulesoft.org/schema/mule/<name>[/<extra>]
-          m (re-matches #"https?://www\.mulesoft\.org/schema/mule/([^/]+)(?:/.*)?" uri)]
-      (some-> m second))))
-
-(defn- tag-connector
-  "Return the connector entry that owns a data.xml tag/attr, or nil."
-  [tag]
-  (let [[prefix _] (split-prefix tag)
-        uri (decode-ns-uri prefix)
-        name (uri->connector-name uri)]
-    (when name (find-connector name))))
-
-(defn- tag-info
-  "Return [connector-name local-name uri] for a data.xml tag.
-   connector-name is nil for core/ee/documentation tags."
-  [tag]
-  (let [[prefix local] (split-prefix tag)
-        uri (decode-ns-uri prefix)]
-    [(uri->connector-name uri) local uri]))
-
-(defn- placeholders-in
-  "Return all ${...} placeholder names appearing anywhere in the attribute
-   values of an element."
-  [el]
-  (->> (vals (:attrs el))
-       (mapcat (fn [v]
-                 (when (string? v)
-                   (map second (re-seq #"\$\{([^}]+)\}" v)))))
-       set))
-
-(defn- runtime-resolvable?
-  "Placeholders Mule resolves at runtime independently of config props."
-  [name]
-  (or (str/starts-with? name "env.")
-      (str/starts-with? name "sys.")
-      (str/starts-with? name "app.")
-      (= name "mule.home")
-      (= name "mule.app.name")
-      (= name "mule.env")))
-
-(defn- flatten-keys
-  "Flatten a nested keyword-keyed map into dotted-string keys.
-   {:a {:b 1 :c {:d 2}}} -> #{\"a.b\" \"a.c.d\"}"
-  [m]
-  (letfn [(walk [prefix v]
-            (cond
-              (map? v) (mapcat (fn [[k v2]]
-                                 (let [k* (name k)
-                                       p (if (str/blank? prefix) k* (str prefix "." k*))]
-                                   (walk p v2))) v)
-              :else [prefix]))]
-    (set (walk "" m))))
-
-(defn- resource-candidates
-  "Candidate filesystem paths for a Mule resource (configuration-properties file)."
-  [mule-xml-path fname]
-  (let [f (io/file mule-xml-path)
-        base (some-> f .getParentFile)
-        ;; Walk up looking for src/main directory structure
-        parents (take 6 (iterate #(some-> ^java.io.File % .getParentFile) base))
-        roots (->> parents
-                   (keep (fn [p]
-                           (when p
-                             (let [src-main (io/file p "src" "main")]
-                               (when (.exists src-main) p))))))
-        project-root (first roots)]
-    (cond-> []
-      base (conj (io/file base fname))
-      project-root (conj (io/file project-root "src" "main" "resources" fname)
-                          (io/file project-root "src" "test" "resources" fname))
-      true (conj (io/file fname)))))
-
-(defn- load-property-keys-from-file
-  "Return the set of dotted-string keys defined by a configuration-properties file."
-  [^java.io.File file]
-  (when (.exists file)
-    (let [content (slurp file)
-          name (.getName file)]
-      (cond
-        (or (str/ends-with? name ".yaml") (str/ends-with? name ".yml"))
-        (try
-          (flatten-keys (yaml/parse-string content))
-          (catch Exception e
-            (log/debug "YAML parse failed for" (.getPath file) (ex-message e))
-            #{}))
-
-        (str/ends-with? name ".properties")
-        (set (map first (re-seq #"(?m)^\s*([A-Za-z_][\w.-]*)\s*=" content)))
-
-        :else #{}))))
-
-(defn- collect-config-property-values
-  "Build a set of placeholder keys defined by `configuration-properties` files
-   referenced via file= attribute. Searches sibling dir, src/main/resources, etc."
-  [root mule-xml-path]
-  (let [cp-files (->> (xml-elements root)
-                      (filter #(= "configuration-properties" (second (split-prefix (:tag %)))))
-                      (keep #(el-attr % :file)))]
-    (->> cp-files
-         (mapcat (fn [fname]
-                   (some load-property-keys-from-file
-                         (resource-candidates mule-xml-path fname))))
-         (remove nil?)
-         set)))
-
-(defn- looks-like-config-element?
-  "Heuristic: tag local part is exactly 'config' or ends with '-config' / 'Config'."
-  [local]
-  (and local
-       (or (= "config" local)
-           (str/ends-with? local "-config")
-           (str/ends-with? local "Config"))))
-
-(defn- collect-config-names
-  "All 'name' attributes of config-like elements."
-  [root]
-  (->> (xml-elements root)
-       (filter (fn [el]
-                 (let [[_ local] (split-prefix (:tag el))]
-                   (looks-like-config-element? local))))
-       (keep #(el-attr % :name))
-       set))
-
-(defn- collect-config-refs [root]
-  (->> (xml-elements root)
-       (keep #(el-attr % :config-ref))
-       set))
-
-(defn- collect-flow-names [root]
-  (->> (xml-elements root)
-       (filter #(let [[_ l] (split-prefix (:tag %))]
-                  (or (= "flow" l) (= "sub-flow" l))))
-       (keep #(el-attr % :name))
-       set))
-
-(defn- collect-flow-refs [root]
-  (->> (xml-elements root)
-       (filter #(= "flow-ref" (second (split-prefix (:tag %)))))
-       (keep #(el-attr % :name))
-       set))
-
-(defn- infra-attr?
-  "Mule platform attributes that don't appear in connector schemas."
-  [attr-keyword]
-  (let [[prefix local] (split-prefix attr-keyword)
-        uri (decode-ns-uri prefix)]
-    (or
-      ;; Common infrastructure attrs in default/no namespace
-      (and (nil? prefix) (#{"name" "config-ref" "value"} local))
-      ;; Anything under the documentation namespace (e.g. doc:name, doc:id)
-      (and uri (str/starts-with? uri "http://www.mulesoft.org/schema/mule/documentation"))
-      ;; xsi:schemaLocation etc.
-      (and uri (str/starts-with? uri "http://www.w3.org/2001/XMLSchema-instance")))))
-
-(defn- validate-elements-against-schema
-  "For every element whose namespace maps to a known connector schema, verify
-   that each attribute is a known parameter of the matching element.
-
-   Best-effort: the schema cache only carries top-level configs/operations/
-   sources/types — nested elements like `<http:listener-connection>` or
-   `<sftp:connection>` are not in the schema, so we skip elements we can't
-   match (no false positives) rather than reporting them as unknown."
-  [root]
-  (let [missing-connectors (atom #{})]
-    (mapcat
-      (fn [el]
-        (let [[conn-name local _uri] (tag-info (:tag el))]
-          (when conn-name
-            (if-let [c (find-connector conn-name)]
-              (when-let [match (find-element c local)]
-                (let [param-names (set (mapcat (fn [p]
-                                                  [(:name p) (camel->kebab (:name p))])
-                                                (:parameters match)))]
-                  (->> (:attrs el)
-                       (remove (fn [[k _]] (infra-attr? k)))
-                       (keep (fn [[k _]]
-                               (let [[_ kn] (split-prefix k)]
-                                 (when-not (param-names kn)
-                                   {:severity "warn"
-                                    :kind :unknown-attribute
-                                    :message (str "Unknown attribute '" kn "' on <" conn-name ":" local ">")
-                                    :connector conn-name
-                                    :element local
-                                    :attribute kn}))))
-                       seq)))
-              ;; Connector mentioned in XML but not in cache — surface once per file
-              (when-not (@missing-connectors conn-name)
-                (swap! missing-connectors conj conn-name)
-                [{:severity "info"
-                  :kind :connector-not-in-cache
-                  :message (str "Connector '" conn-name "' is not in ~/.yaac/schema (run `yaac connector collect`)")
-                  :connector conn-name}])))))
-      (xml-elements root))))
-
-(defn- validate-cross-refs [root]
-  (let [configs (collect-config-names root)
-        flows (collect-flow-names root)]
-    (concat
-      (for [ref (collect-config-refs root)
-            :when (not (configs ref))]
-        {:severity "error" :kind :undefined-config-ref
-         :message (str "config-ref '" ref "' is not defined")})
-      (for [ref (collect-flow-refs root)
-            :when (not (flows ref))]
-        {:severity "error" :kind :undefined-flow-ref
-         :message (str "flow-ref name='" ref "' has no matching flow/sub-flow")}))))
-
-(defn- validate-placeholders [root mule-xml-path]
-  (let [defined (collect-config-property-values root mule-xml-path)
-        env-vars (set (keys (System/getenv)))
-        sys-props (set (map str (.keySet (System/getProperties))))]
-    (->> (xml-elements root)
-         (mapcat (fn [el]
-                   (for [ph (placeholders-in el)
-                         :when (and (not (runtime-resolvable? ph))
-                                    (not (defined ph))
-                                    (not (env-vars ph))
-                                    (not (sys-props ph)))]
-                     {:severity "warn"
-                      :kind :unresolved-placeholder
-                      :message (str "Placeholder ${" ph "} is not defined in configuration-properties")
-                      :placeholder ph}))))))
-
-(defn connector-validate
-  "Validate one or more Mule XML files. Reports a flat list of findings.
-   Each finding: {:file :severity :kind :message [...extra...]}."
-  [{:keys [args]}]
-  (when (empty? args)
-    (throw (e/invalid-arguments
-             "Usage: yaac connector validate <mule.xml> [...]"
-             {:args args})))
-  (vec
-    (mapcat
-      (fn [path]
-        (let [f (io/file path)]
-          (if-not (.exists f)
-            [{:file path :severity "error" :kind :file-not-found
-              :message (str "File not found: " path)}]
-            (let [root (dx/parse-str (slurp f))
-                  results (concat (validate-cross-refs root)
-                                  (validate-placeholders root path)
-                                  (validate-elements-against-schema root))]
-              (map #(assoc % :file path) results)))))
-      args)))
 
 ;; ---------------------------------------------------------------------------
 ;; collect — extract connector schemas from the local Maven repository
@@ -734,7 +444,7 @@
     (->> (concat
           ["Usage: connector <command> [options]"
            ""
-           "Mule connector schema browser + property validator."
+           "Mule connector schema browser."
            "Schema cache lives at ~/.yaac/schema/ — run `yaac connector"
            "collect` once to populate it from your local Maven repository."
            ""
@@ -750,7 +460,6 @@
              "  show <name>                          Show configs/operations/sources of a connector"
              "  show <name> <element>                Show parameters of one element"
              "  search <keyword>                     Search across connectors/elements/params"
-             "  validate <mule.xml> [...]            Validate one or more Mule XML files"
              "  refresh                              Invalidate the local nippy cache"
              ""
              "Examples:"
@@ -760,25 +469,14 @@
              "  yaac connector show http"
              "  yaac connector show http request"
              "  yaac connector search timeout"
-             "  yaac connector validate src/main/mule/main.xml"
              ""
              "collect: scans ~/.m2/repository (override with $M2_REPO) for"
              "  *-mule-plugin.jar, keeps the latest version of each, and extracts"
              "  META-INF/*-extension-descriptions.xml into ~/.yaac/schema/."
              "  Anypoint Exchange custom connectors (UUID group ids) are skipped."
              ""
-             "Validator coverage (best-effort, name-level only):"
-             "  - Unresolved ${...} placeholders (configuration-properties / env / sys)"
-             "  - config-ref pointing to undefined config"
-             "  - flow-ref pointing to undefined flow/sub-flow"
-             "  - Unknown attribute on a recognised connector element"
-             "  - Connector namespace used in XML but not in ~/.yaac/schema"
-             ""
-             "Not supported (the schema cache carries names + descriptions only):"
-             "  - Parameter type checking (string/number/boolean)"
-             "  - Required parameter enforcement"
-             "  - Enum value validation"
-             "  - Nested elements like <conn:connection> (not in schema cache)"
+             "To validate a Mule app against these schemas (and check for"
+             "unresolved ${...} properties before deploy), use `yaac validate`."
              ""]))
          (str/join \newline))))
 
@@ -800,8 +498,6 @@
                      :fields [:connector :kind :name :element :parameter :description]}]
    ["|search|{*args}" {:handler connector-search
                        :fields [:connector :kind :parent :name :description]}]
-   ["|validate|{*args}" {:handler connector-validate
-                         :fields [:file :severity :kind :message]}]
    ["|refresh" {:handler connector-refresh
                 :fields [:message]}]])
 

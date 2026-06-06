@@ -7,6 +7,7 @@
   (:require [yaac.core :as yc :refer [*org* *env* *deploy-target* *no-cache* *no-multi-thread* *quiet* *console* global-base-url]]
             [yaac.core.routing]
             [yaac.connector]
+            [yaac.validate]
             [yaac.util :as util]
             [reitit.core :as r]
             [clojure.string :as str]
@@ -72,6 +73,7 @@
         "  configure  context|credential|clear-cache ...             Configure contexts (aliases: config, cfg)"
         "  auth       code|client|azure ...                          OAuth2 authorization flows"
         "  build      <goals...>                                     Run Maven goals (embedded)"
+        "  validate   <app.jar|dir|mule.xml> ...                     Pre-deploy validation (unresolved properties)"
         "  http       -                                              Request HTTP to an application"
         "  logs       app ...                                        View application logs"
         "  a2a        init|send|console ...                          A2A (Agent-to-Agent) protocol client"
@@ -120,6 +122,10 @@
         "  # Build (embedded Maven)"
         "  yaac build clean package"
         "  yaac build clean package -DattachMuleSources"
+        ""
+        "  # Pre-deploy validation (detect unset ${...} properties)"
+        "  yaac validate target/my-app.jar +mule.env=ch2"
+        "  yaac validate . +mule.env=local"
         ""
         "See 'yaac <action> --help' for per-action options and details."
         ""
@@ -220,8 +226,10 @@
                        yaac.mcp/route
                        ;; A2A
                        yaac.a2a/route
-                       ;; Connector schema browser / validator
+                       ;; Connector schema browser
                        yaac.connector/route
+                       ;; Pre-deploy validation
+                       yaac.validate/route
                        ;; DataWeave
                        ;;yaac.dw/route
                        ]))
