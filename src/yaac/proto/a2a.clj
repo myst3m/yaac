@@ -287,8 +287,16 @@
       ;; could have signaled terminal. We collapse both into the saved session.
       (let [saw-terminal? (atom false)]
         (doseq [{:keys [event data]} events]
-          (let [parsed (try (json/read-value data json/keyword-keys-object-mapper)
-                            (catch Exception _ data))]
+          (let [envelope (try (json/read-value data json/keyword-keys-object-mapper)
+                              (catch Exception _ data))
+                ;; Each SSE `data` is a JSON-RPC response envelope
+                ;; {:jsonrpc :id :result {...}} per the A2A spec. Unwrap :result
+                ;; so downstream sees the bare Task/Message/event (matching the
+                ;; non-streaming jsonrpc-post! which also returns (:result ...)).
+                ;; Fall back to the raw value if there is no :result wrapper.
+                parsed (if (and (map? envelope) (contains? envelope :result))
+                         (:result envelope)
+                         envelope)]
             (reset! last-result parsed)
             (when (terminal-result? parsed)
               (reset! saw-terminal? true))

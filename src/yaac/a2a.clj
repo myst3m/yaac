@@ -368,7 +368,13 @@
     "status-update"
     (let [state (get-in data [:status :state])]
       (case state
-        "working" (str (jansi/fg :yellow "⟳ ") (jansi/a :blink (jansi/fg :yellow "working...")))
+        "working"
+        (let [msg-text (extract-text-parts (get-in data [:status :message :parts]))]
+          (if (seq msg-text)
+            ;; Agent streamed incremental text inside the working status message
+            ;; (chat-style streaming) — show it instead of a generic spinner.
+            (str (jansi/fg :yellow "⟳ ") msg-text)
+            (str (jansi/fg :yellow "⟳ ") (jansi/a :blink (jansi/fg :yellow "working...")))))
         "completed" (jansi/a :faint (str "✓ " state))
         "input-required" (jansi/a :faint (str "? " state))
         "auth-required"
