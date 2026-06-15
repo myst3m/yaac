@@ -252,7 +252,8 @@
              "  - secret-group [org] [env]              Get Secret Groups"
              "  - asset [org] key1=val1 key2=val2 ...   Get assets in Anypoint Exchange"
              "  - user [org]                            Get users that belong to the organization"
-             "  - team                                  Get teams in the root organization"
+             "  - team [<name> --member | --role]       Get teams; or one team's members / roles"
+             "  - role [filter]                         Get permission roles (deprecated; prefer teams)"
              "  - connected-app                         Get connected applications"
              "  - runtime-target [org] [env]            Get runtime targets of RTF and CloudHub 2.0"
              "  - gateway [org] [env]                   Get Flex Gateways (standalone + managed)"
@@ -286,6 +287,11 @@
            ""
            "# Get metrics"
            "  > yaac get metrics T1 Production --type app-inbound --from 1h"
+           ""
+           "# Teams: list, then a team's members or roles"
+           "  > yaac get team"
+           "  > yaac get team admin --member"
+           "  > yaac get team admin --role"
            ""])
          (str/join \newline))))
 
@@ -326,7 +332,12 @@
                :parse-fn parse-long]
               [nil "--offset N" "Result offset"
                :id :offset
-               :parse-fn parse-long]])
+               :parse-fn parse-long]
+              ;; Team sub-views
+              [nil "--member" "For `get team <name>`: list the team's members"
+               :id :member]
+              [nil "--role" "For `get team <name>`: list the roles assigned to the team"
+               :id :role]])
 
 ;; (defn get* [{:keys [args] :as opts}]
 ;;   (let []
@@ -1021,8 +1032,25 @@
 
 (def -get-teams (memoize-file -get-teams))
 
-(defn get-teams [& _]
-  (-get-teams))
+(declare get-team-members get-team-roles)
+
+(def ^:private team-list-fields
+  [:team-name [:team-id :fmt short-uuid] :team-type [:org-id :fmt short-uuid]])
+(def ^:private team-member-fields
+  [:name [:id :fmt short-uuid] :identity-type :membership-type [:extra :team]])
+(def ^:private team-role-fields
+  [:name [:role-id :fmt short-uuid] :context-params [:extra :team]])
+
+(defn get-teams
+  "List teams, or — with --member / --role — the members or roles of one team.
+     yaac get team
+     yaac get team <name> --member
+     yaac get team <name> --role"
+  [{:keys [member role] :as opts}]
+  (cond
+    member (with-meta (get-team-members opts) {:fields team-member-fields})
+    role   (with-meta (get-team-roles opts)   {:fields team-role-fields})
+    :else  (with-meta (-get-teams)            {:fields team-list-fields})))
 
 (defn team->id [id-or-name]
   (let [teams (-get-teams)

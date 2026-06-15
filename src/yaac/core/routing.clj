@@ -191,24 +191,11 @@
     ["user"]
     ["user|{*args}"]]
 
+   ;; Teams. `--member` / `--role` switch to that team's members or roles.
    ["|" {:fields [:team-name [:team-id :fmt yc/short-uuid] :team-type [:org-id :fmt yc/short-uuid]]
          :handler yc/get-teams}
     ["team"]
     ["team|{*args}"]]
-
-   ;; Team members
-   ["|" {:fields [:name [:id :fmt yc/short-uuid] :identity-type :membership-type [:extra :team]]
-         :handler yc/get-team-members}
-    ["team-member"]
-    ["team-member|{*args}"]
-    ["tm"]
-    ["tm|{*args}"]]
-
-   ;; Team roles
-   ["|" {:fields [:name [:role-id :fmt yc/short-uuid] :context-params [:extra :team]]
-         :handler yc/get-team-roles}
-    ["team-role"]
-    ["team-role|{*args}"]]
 
    ;; Roles (permission sets; deprecated in favor of teams)
    ["|" {:fields [:name [:role-id :fmt yc/short-uuid] :description]

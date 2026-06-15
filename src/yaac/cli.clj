@@ -384,6 +384,8 @@
                                              (some-> (:output-format data) csk/->kebab-case-keyword))
 
                         default-fields (or (if (= :wide effective-format) (:wide-fields data) nil)
+                                           ;; a handler may override columns per result via metadata
+                                           (:fields (meta results))
                                            (:fields data)
                                            (map #(vector :extra %) (keys (or (:extra sample)
                                                                              (:extra (ex-data sample))
