@@ -45,6 +45,7 @@
              "  - asset <asset> key=val               ...                    "
              "  - api [org] [env] <api> key=val       ...                    "
              "  - org [org] key=val                   ...                    "
+             "  - team <name> member=<u> | maintainer=<u> | remove-member=<u> | role=<r> | remove-role=<r>"
              "  - conn [org] <private-space> <connection> ... key=val  "
              "  - connected-app <name-or-client-id> --scopes ... --org-scopes ..."
              "  - client-provider <name-or-id> --name ... --authorize-url ..."
@@ -78,6 +79,12 @@
              "    Note: use key=value form (NOT --flags). Only keys you pass are changed."
              "          The amount is drawn from the parent org's unassigned pool, so"
              "          free capacity there first (reduce another sub-org) if needed."
+             "  team   (manage members and roles; values comma-separated)"
+             "    - member=<user>         : add user(s) as member"
+             "    - maintainer=<user>     : add user(s) as maintainer"
+             "    - remove-member=<user>  : remove user(s)"
+             "    - role=<role>           : assign role(s) to the team (see `yaac get role`)"
+             "    - remove-role=<role>    : remove role(s) from the team"
              "  conn|connection"
              "    - static-routes         : ex. +172.17.0.0/16,+192.168.11.0/24"
              "  connected-app"
@@ -309,6 +316,48 @@
                     :body (edn->json body)})
          (parse-response)
          :body)))
+
+(defn update-team
+  "Add/remove team members and roles.
+   Usage: yaac update team <name> [member=<user>] [maintainer=<user>]
+                                  [remove-member=<user>] [role=<role>] [remove-role=<role>]
+   Values are comma-separated; only the keys you pass take effect."
+  [{:keys [member maintainer remove-member role remove-role] [team] :args}]
+  (binding [yc/*no-cache* true]   ;; always resolve teams fresh for mutations
+   (let [root-org-id (:id (yc/-get-root-organization))
+        team-id (yc/team->id team)
+        base (format (gen-url "/accounts/api/organizations/%s/teams/%s") root-org-id team-id)
+        csv (fn [v] (when v (mapcat #(str/split % #",") v)))
+        add-member! (fn [u mtype]
+                      (let [uid (yc/user->id u)]
+                        @(http/put (str base "/members/" uid)
+                                   {:headers (default-headers)
+                                    :body (edn->json :snake {:membership-type mtype})})
+                        {:op (str "add-" mtype) :member u}))
+        del-member! (fn [u]
+                      (let [uid (yc/user->id u)]
+                        @(http/delete (str base "/members/" uid) {:headers (default-headers)})
+                        {:op "remove-member" :member u}))
+        add-role! (fn [r]
+                    (let [rid (yc/role->id r)]
+                      @(http/post (str base "/roles")
+                                  {:headers (default-headers)
+                                   :body (edn->json :snake [{:role-id rid :context-params {}}])})
+                      {:op "add-role" :role r}))
+        del-role! (fn [r]
+                    (let [rid (yc/role->id r)]
+                      @(http/delete (str base "/roles")
+                                    {:headers (default-headers)
+                                     :body (edn->json :snake [{:role-id rid :context-params {}}])})
+                      {:op "remove-role" :role r}))]
+    (util/spin (str "Updating team " team "..."))
+    (vec
+      (concat
+        (map #(add-member! % "member") (csv member))
+        (map #(add-member! % "maintainer") (csv maintainer))
+        (map del-member! (csv remove-member))
+        (map add-role! (csv role))
+        (map del-role! (csv remove-role)))))))
 
 (defn update-cloudhub20-connection [{:keys [args static-routes]
                                      [org ps conn] :args}]
@@ -561,6 +610,9 @@
                              [:entitlements :vpns :assigned :as "vpns"]
                              [:entitlements :managed-gateway-large :assigned :as "fgw-large"]
                              [:entitlements :managed-gateway-small :assigned :as "fgw-small"]]}]
+   ["|team" {:help true}]
+   ["|team|{*args}" {:handler update-team
+                     :fields [:op :member :maintainer :role]}]
    ["|connection" {:help true}]
    ["|conn" {:help true}]
    ["|connection|{*args}" {:handler update-cloudhub20-connection}]

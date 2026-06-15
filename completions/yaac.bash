@@ -18,13 +18,13 @@ _yaac_completions() {
     local commands="login get list ls upload up deploy dep delete del rm remove create new describe desc update upd download dl configure config cfg auth http logs build validate val a2a mcp connector clear"
 
     # --- Subcommands per canonical command ---
-    local get_subcmds="org organization env environment app application api api-instance asset proxy gw gateway rtf runtime-fabric rtt runtime-target serv server ps private-space sg secret-group ent entitlement np node-port cont contract capp connected-app ca scope scopes user team conn connection policy pol idp cp client-provider metrics alert"
+    local get_subcmds="org organization env environment app application api api-instance asset proxy gw gateway rtf runtime-fabric rtt runtime-target serv server ps private-space sg secret-group ent entitlement np node-port cont contract capp connected-app ca scope scopes user team team-member tm team-role role conn connection policy pol idp cp client-provider metrics alert"
     local upload_subcmds="asset"
     local deploy_subcmds="app proxy manifest"
-    local delete_subcmds="org app api contract cont policy alert gateway gw asset idp-user connected-app capp cp client-provider rtf runtime-fabric ps private-space"
-    local create_subcmds="org organization env environment api policy gateway gw invitation invite connected-app cp client-provider ps private-space alert"
+    local delete_subcmds="org app api contract cont policy alert gateway gw asset idp-user connected-app capp cp client-provider team rtf runtime-fabric ps private-space"
+    local create_subcmds="org organization env environment api policy gateway gw invitation invite connected-app cp client-provider team ps private-space alert"
     local describe_subcmds="org organization env environment app application asset api connected-app capp cp client-provider gateway gw ps private-space rtf runtime-fabric server serv"
-    local update_subcmds="app asset api org connection conn connected-app cp client-provider upstream policy"
+    local update_subcmds="app asset api org team connection conn connected-app cp client-provider upstream policy"
     local download_subcmds="proxy api"
     local config_subcmds="ctx context cred credential cc clear-cache"
     local auth_subcmds="code client azure"

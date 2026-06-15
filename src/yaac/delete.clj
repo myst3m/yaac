@@ -69,6 +69,7 @@
              "  - idp-user <email> provider=<name>                 Delete IdP user profile."
              "  - connected-app <name|client-id>                   Delete connected app."
              "  - client-provider <name|id>                        Delete client provider (cp)."
+             "  - team <name|id>                                   Delete a team."
              "  - rtf [org] <name|id>                              Delete Runtime Fabric cluster."
              "  - ps [org] <name|id>                               Delete Private Space."
              ""])
@@ -939,6 +940,19 @@
           (parse-response)
           (assoc :deleted-provider cp-name-or-id)))))
 
+(defn delete-team [{:keys [args] :as opts}]
+  (let [[team-name-or-id] args]
+    (when-not team-name-or-id
+      (throw (e/invalid-arguments "Team name or ID is required" :args args)))
+    (binding [yc/*no-cache* true]
+     (let [{root-org-id :id} (-get-root-organization)
+          team-id (yc/team->id team-name-or-id)]
+      (-> @(http/delete (format (gen-url "/accounts/api/organizations/%s/teams/%s")
+                               root-org-id team-id)
+                       {:headers (default-headers)})
+          (parse-response)
+          (assoc :deleted-team team-name-or-id :team-id team-id))))))
+
 (defn delete-runtime-fabric [{:keys [args all dry-run force] :as opts}]
   (let [[rtf-name org] (reverse args)
         org (or org *org*)]
@@ -1113,6 +1127,9 @@
       ["|client-provider"]
       ["|client-provider|{*args}" {:fields [:status :deleted-provider]
                                     :handler delete-client-provider}]
+      ["|team"]
+      ["|team|{*args}" {:fields [:status :deleted-team :team-id]
+                        :handler delete-team}]
       ["|rtf"]
       ["|rtf|{*args}" {:fields [:status :deleted-rtf :error]
                        :handler delete-runtime-fabric}]

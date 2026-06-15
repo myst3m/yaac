@@ -1041,6 +1041,60 @@
                                     (= id-or-name (:team-name %)))
                                teams)))))
 
+(defn- teams-base-url []
+  (format (gen-url "/accounts/api/organizations/%s/teams")
+          (:id (-get-root-organization))))
+
+(defn -get-team-members [team-id]
+  (-> @(http/get (str (teams-base-url) "/" team-id "/members")
+                 {:headers (default-headers)})
+      (parse-response)
+      :body
+      :data))
+
+(defn get-team-members [{[team] :args}]
+  (let [team-id (team->id team)]
+    (-> (-get-team-members team-id)
+        (add-extra-fields :team (team->name team-id)))))
+
+(defn -get-team-roles [team-id]
+  (-> @(http/get (str (teams-base-url) "/" team-id "/roles")
+                 {:headers (default-headers)})
+      (parse-response)
+      :body
+      :data))
+
+(defn get-team-roles [{[team] :args}]
+  (let [team-id (team->id team)]
+    (-> (-get-team-roles team-id)
+        (add-extra-fields :team (team->name team-id)))))
+
+(defn -get-roles []
+  (-> @(http/get (gen-url "/accounts/api/roles?limit=1000")
+                 {:headers (default-headers)})
+      (parse-response)
+      :body
+      :data))
+
+(def -get-roles (memoize-file -get-roles))
+
+(defn get-roles [{:keys [args]}]
+  (let [term (first args)]
+    (cond->> (-get-roles)
+      term (filter #(re-find (re-pattern (str "(?i)" (java.util.regex.Pattern/quote term)))
+                             (str (:name %)))))))
+
+(defn role->id
+  "Resolve a role name (or role-id) to its role-id."
+  [name-or-id]
+  (let [roles (-get-roles)
+        r (first (filter #(or (= name-or-id (:role-id %))
+                              (= name-or-id (:name %)))
+                         roles))]
+    (or (:role-id r)
+        (throw (e/no-item (str "Role not found: " name-or-id)
+                          {:hint "yaac get role lists available role names"})))))
+
 
 (defn assets-fields [& {:keys [output-format fields]
                         :or {fields [:group-id :asset-id  :type :version :status]}}]

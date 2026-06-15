@@ -57,6 +57,7 @@
              " - invitation"
              " - connected-app"
              " - client-provider (cp)"
+             " - team"
              ""
              "Keys:"
              ""
@@ -71,6 +72,9 @@
              "  invitation:"
              "   - email:               user's email address"
              "   - team-id:             team ID or name"
+             "  team:   (yaac create team <name> [parent=<team>] [type=internal])"
+             "   - parent:              parent team name/id (default: root 'Everyone' team)"
+             "   - type:                team type (default: internal)"
              "  connected-app:"
              "   - name:                app name"
              "   - redirect-uris:       comma-separated redirect URIs"
@@ -1070,6 +1074,33 @@
         ;; No network config
         (yc/add-extra-fields ps-resp :name :name :status :status :region :region)))))
 
+(defn create-team
+  "Create a team under the root organization.
+   Usage: yaac create team <name> [parent=<team>] [type=internal]
+   parent defaults to the root 'Everyone' team."
+  [{:keys [parent type] [name] :args}]
+  (when-not name
+    (throw (e/invalid-arguments "Team name is required" {:hint "yaac create team <name> [parent=<team>]"})))
+  (let [root-org (-get-root-organization)
+        org-id (:id root-org)
+        base (format (gen-url "/accounts/api/organizations/%s/teams") org-id)
+        parent-name (if parent (first parent) nil)
+        parent-id (if parent-name
+                    (yc/team->id parent-name)
+                    ;; default: the root 'Everyone' team (no ancestors)
+                    (->> (yc/-get-teams)
+                         (filter #(empty? (:ancestor-team-ids %)))
+                         first
+                         :team-id))
+        team-type (if type (first type) "internal")
+        body {:team-name name :team-type team-type :parent-team-id parent-id}]
+    (util/spin (str "Creating team " name "..."))
+    (-> @(http/post base {:headers (default-headers)
+                          :body (edn->json :snake body)})
+        (parse-response)
+        :body
+        (yc/add-extra-fields :parent (if parent-name parent-name "(root)")))))
+
 (def route
   (for [op ["create" "new"]]
     [op {:options options
@@ -1113,6 +1144,9 @@
      ["|" {:handler create-connected-app
            :fields [:client-id :client-secret :client-name]}
       ["connected-app|{*args}"]]
+     ["|" {:handler create-team
+           :fields [:team-name [:team-id :fmt short-uuid] :team-type [:extra :parent]]}
+      ["team|{*args}"]]
      ["|" {:handler create-client-provider
            :fields [[:extra :name] [:extra :id :fmt short-uuid] [:extra :type]]}
       ["cp|{*args}"]
