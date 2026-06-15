@@ -86,6 +86,12 @@ yaac delete connected-app <name|client-id>
 yaac delete cp <name|id>
 ```
 
+### Team
+
+```bash
+yaac delete team <name|id>
+```
+
 ### IdP User Profile
 
 ```bash

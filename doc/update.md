@@ -64,11 +64,17 @@ yaac update org [org] [key=value...]
 
 | Key | Description |
 |-----|-------------|
-| `v-cores-production` | Production vCores |
+| `v-cores-production` | Production vCores (fractional ok, e.g. `1.9`) |
 | `v-cores-sandbox` | Sandbox vCores |
 | `network-connections` | Network connections |
 | `static-ips` | Static IPs |
 | `vpns` | VPNs |
+| `fgw-large` / `fgw-small` | Managed (Flex) Gateway, large / small |
+
+> **Pass these as `key=value`, not `--flags`.** A `--v-cores-production` flag is
+> not declared and is silently ignored (no-op). Only the keys you pass change.
+> The amount is drawn from the parent org's unassigned pool, so free capacity
+> there first (reduce another sub-org) if the parent is fully allocated.
 
 Use `yaac get ent` to check current allocations across all child orgs before updating.
 
@@ -82,6 +88,30 @@ yaac update org T1.1 v-cores-production=0.5 v-cores-sandbox=0.2
 # Update multiple entitlements at once
 yaac update org T1.1 static-ips=2 network-connections=1 vpns=1
 ```
+
+### Team
+
+```bash
+yaac update team <name> [member=<u>] [maintainer=<u>] [remove-member=<u>] [role=<r>] [remove-role=<r>]
+```
+
+| Key | Description |
+|-----|-------------|
+| `member` | Add user(s) as member (comma-separated) |
+| `maintainer` | Add user(s) as maintainer |
+| `remove-member` | Remove user(s) from the team |
+| `role` | Assign role(s) to the team (see `yaac get role`) |
+| `remove-role` | Remove role(s) from the team |
+
+```bash
+# Add a member and assign a role
+yaac update team payments-squad member=alice@example.com role="View Organization"
+
+# Promote to maintainer and drop a role
+yaac update team payments-squad maintainer=bob@example.com remove-role=Profile
+```
+
+Inspect a team with [`yaac get team <name> --member`](get.md) / `--role`.
 
 ### CloudHub 2.0 Connection
 

@@ -153,6 +153,20 @@ yaac create mg [org] [env] --name <name> --target <target> [options]
 yaac create invite -e <email> [-t team:role,...] [--team-id <name>] [--membership-type member|maintainer]
 ```
 
+### Team
+
+```bash
+yaac create team <name> [parent=<team>] [type=internal]
+```
+
+| Key | Description |
+|-----|-------------|
+| `parent` | Parent team name/id (default: the root "Everyone" team) |
+| `type` | Team type (default: `internal`) |
+
+Manage a team's members and roles with [`yaac update team`](update.md#team);
+remove it with [`yaac delete team`](delete.md).
+
 ## Examples
 
 ```bash
@@ -172,6 +186,9 @@ yaac create connected-app --name myapp --grant-types client_credentials \
 
 # Invite user
 yaac create invite -e user@example.com --team-id DevTeam --membership-type member
+
+# Create a team under another team
+yaac create team payments-squad parent=Developer
 ```
 
 ## See Also
