@@ -966,7 +966,13 @@
       :else
       (recur (z/right l) m))))
 
-(declare provider->name)
+;; provider->name lives in yaac.core.identity, which depends on this ns.
+;; Resolve it lazily at call time to avoid a circular namespace dependency.
+(defn- provider->name* [idp-id]
+  (when-let [f (try (requiring-resolve 'yaac.core.identity/provider->name)
+                    (catch Exception _ nil))]
+    (f idp-id)))
+
 ;;; Get
 (defn -get-users [org]
   (let [org (or org *org*)
@@ -976,7 +982,7 @@
          (parse-response)
          :body
          :data
-         (add-extra-fields :idp #(provider->name (get % :idprovider-id )))
+         (add-extra-fields :idp #(provider->name* (get % :idprovider-id )))
          )))
 
 (def -get-users (memoize -get-users))
