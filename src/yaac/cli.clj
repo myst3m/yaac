@@ -46,7 +46,7 @@
             [yaac.manifest :as manifest]
             [yaac.maven :as maven]))
 
-(def version "0.10.1")
+(def version "0.10.2")
 
 ;;; main
 
