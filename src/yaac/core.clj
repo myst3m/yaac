@@ -1053,9 +1053,10 @@
       :data))
 
 (defn get-team-members [{[team] :args}]
-  (let [team-id (team->id team)]
+  ;; resolve the team fresh so a just-created team is found without -Z
+  (let [team-id (binding [*no-cache* true] (team->id team))]
     (-> (-get-team-members team-id)
-        (add-extra-fields :team (team->name team-id)))))
+        (add-extra-fields :team (binding [*no-cache* true] (team->name team-id))))))
 
 (defn -get-team-roles [team-id]
   (-> @(http/get (str (teams-base-url) "/" team-id "/roles")
@@ -1065,9 +1066,9 @@
       :data))
 
 (defn get-team-roles [{[team] :args}]
-  (let [team-id (team->id team)]
+  (let [team-id (binding [*no-cache* true] (team->id team))]
     (-> (-get-team-roles team-id)
-        (add-extra-fields :team (team->name team-id)))))
+        (add-extra-fields :team (binding [*no-cache* true] (team->name team-id))))))
 
 (defn -get-roles []
   (-> @(http/get (gen-url "/accounts/api/roles?limit=1000")
