@@ -164,7 +164,7 @@ yaac create team <name> [parent=<team>] [type=internal]
 | `parent` | Parent team name/id (default: the root "Everyone" team) |
 | `type` | Team type (default: `internal`) |
 
-Manage a team's members and roles with [`yaac update team`](update.md#team);
+Manage a team's members and permissions with [`yaac update team`](update.md#team);
 remove it with [`yaac delete team`](delete.md).
 
 ## Examples

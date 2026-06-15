@@ -103,7 +103,7 @@ yaac validate target/my-app.jar +mule.env=ch2
 yaac get team                              # list teams
 yaac get team admin --member               # a team's members
 yaac create team payments parent=Developer
-yaac update team payments member=alice@example.com role="View Organization"
+yaac update team payments member=alice@example.com permission="View Organization"
 ```
 
 ## Install

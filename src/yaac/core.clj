@@ -252,8 +252,8 @@
              "  - secret-group [org] [env]              Get Secret Groups"
              "  - asset [org] key1=val1 key2=val2 ...   Get assets in Anypoint Exchange"
              "  - user [org]                            Get users that belong to the organization"
-             "  - team [<name> --member | --role]       Get teams; or one team's members / roles"
-             "  - role [filter]                         Get permission roles (deprecated; prefer teams)"
+             "  - team [<name> --member | --permission] Get teams; or one team's members / permissions"
+             "  - permission [filter]                   Get assignable permissions (alias: perm)"
              "  - connected-app                         Get connected applications"
              "  - runtime-target [org] [env]            Get runtime targets of RTF and CloudHub 2.0"
              "  - gateway [org] [env]                   Get Flex Gateways (standalone + managed)"
@@ -288,10 +288,14 @@
            "# Get metrics"
            "  > yaac get metrics T1 Production --type app-inbound --from 1h"
            ""
-           "# Teams: list, then a team's members or roles"
+           "# Teams: list, then a team's members or permissions"
            "  > yaac get team"
            "  > yaac get team admin --member"
-           "  > yaac get team admin --role"
+           "  > yaac get team admin --permission"
+           ""
+           "# List assignable permissions"
+           "  > yaac get permission"
+           "  > yaac get perm application"
            ""])
          (str/join \newline))))
 
@@ -336,8 +340,8 @@
               ;; Team sub-views
               [nil "--member" "For `get team <name>`: list the team's members"
                :id :member]
-              [nil "--role" "For `get team <name>`: list the roles assigned to the team"
-               :id :role]])
+              [nil "--permission" "For `get team <name>`: list the permissions assigned to the team"
+               :id :permission]])
 
 ;; (defn get* [{:keys [args] :as opts}]
 ;;   (let []
@@ -1032,25 +1036,25 @@
 
 (def -get-teams (memoize-file -get-teams))
 
-(declare get-team-members get-team-roles)
+(declare get-team-members get-team-permissions)
 
 (def ^:private team-list-fields
   [:team-name [:team-id :fmt short-uuid] :team-type [:org-id :fmt short-uuid]])
 (def ^:private team-member-fields
   [:name [:id :fmt short-uuid] :identity-type :membership-type [:extra :team]])
-(def ^:private team-role-fields
+(def ^:private team-permission-fields
   [:name [:role-id :fmt short-uuid] :context-params [:extra :team]])
 
 (defn get-teams
-  "List teams, or — with --member / --role — the members or roles of one team.
+  "List teams, or — with --member / --permission — the members or permissions of one team.
      yaac get team
      yaac get team <name> --member
-     yaac get team <name> --role"
-  [{:keys [member role] :as opts}]
+     yaac get team <name> --permission"
+  [{:keys [member permission] :as opts}]
   (cond
-    member (with-meta (get-team-members opts) {:fields team-member-fields})
-    role   (with-meta (get-team-roles opts)   {:fields team-role-fields})
-    :else  (with-meta (-get-teams)            {:fields team-list-fields})))
+    member     (with-meta (get-team-members opts)     {:fields team-member-fields})
+    permission (with-meta (get-team-permissions opts) {:fields team-permission-fields})
+    :else      (with-meta (-get-teams)                {:fields team-list-fields})))
 
 (defn team->id [id-or-name]
   (let [teams (-get-teams)
@@ -1093,7 +1097,9 @@
       :body
       :data))
 
-(defn get-team-roles [{[team] :args}]
+;; Anypoint calls these "roles" at the API layer, but in the Teams model they
+;; are the assignable *permissions*. yaac surfaces them as `permission`.
+(defn get-team-permissions [{[team] :args}]
   (let [team-id (binding [*no-cache* true] (team->id team))]
     (-> (-get-team-roles team-id)
         (add-extra-fields :team (binding [*no-cache* true] (team->name team-id))))))
@@ -1107,22 +1113,22 @@
 
 (def -get-roles (memoize-file -get-roles))
 
-(defn get-roles [{:keys [args]}]
+(defn get-permissions [{:keys [args]}]
   (let [term (first args)]
     (cond->> (-get-roles)
       term (filter #(re-find (re-pattern (str "(?i)" (java.util.regex.Pattern/quote term)))
                              (str (:name %)))))))
 
 (defn role->id
-  "Resolve a role name (or role-id) to its role-id."
+  "Resolve a permission name (or id) to its id (Anypoint role-id)."
   [name-or-id]
   (let [roles (-get-roles)
         r (first (filter #(or (= name-or-id (:role-id %))
                               (= name-or-id (:name %)))
                          roles))]
     (or (:role-id r)
-        (throw (e/no-item (str "Role not found: " name-or-id)
-                          {:hint "yaac get role lists available role names"})))))
+        (throw (e/no-item (str "Permission not found: " name-or-id)
+                          {:hint "yaac get permission lists available permission names"})))))
 
 
 (defn assets-fields [& {:keys [output-format fields]

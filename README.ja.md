@@ -96,7 +96,7 @@ yaac validate target/my-app.jar +mule.env=ch2
 yaac get team                              # チーム一覧
 yaac get team admin --member               # チームのメンバー
 yaac create team payments parent=Developer
-yaac update team payments member=alice@example.com role="View Organization"
+yaac update team payments member=alice@example.com permission="View Organization"
 ```
 
 ## グローバルオプション

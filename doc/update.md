@@ -92,7 +92,7 @@ yaac update org T1.1 static-ips=2 network-connections=1 vpns=1
 ### Team
 
 ```bash
-yaac update team <name> [member=<u>] [maintainer=<u>] [remove-member=<u>] [role=<r>] [remove-role=<r>]
+yaac update team <name> [member=<u>] [maintainer=<u>] [remove-member=<u>] [permission=<p>] [remove-permission=<p>]
 ```
 
 | Key | Description |
@@ -100,18 +100,18 @@ yaac update team <name> [member=<u>] [maintainer=<u>] [remove-member=<u>] [role=
 | `member` | Add user(s) as member (comma-separated) |
 | `maintainer` | Add user(s) as maintainer |
 | `remove-member` | Remove user(s) from the team |
-| `role` | Assign role(s) to the team (see `yaac get role`) |
-| `remove-role` | Remove role(s) from the team |
+| `permission` | Grant permission(s) to the team (see `yaac get permission`) |
+| `remove-permission` | Remove permission(s) from the team |
 
 ```bash
-# Add a member and assign a role
-yaac update team payments-squad member=alice@example.com role="View Organization"
+# Add a member and grant a permission
+yaac update team payments-squad member=alice@example.com permission="View Organization"
 
-# Promote to maintainer and drop a role
-yaac update team payments-squad maintainer=bob@example.com remove-role=Profile
+# Promote to maintainer and drop a permission
+yaac update team payments-squad maintainer=bob@example.com remove-permission=Profile
 ```
 
-Inspect a team with [`yaac get team <name> --member`](get.md) / `--role`.
+Inspect a team with [`yaac get team <name> --member`](get.md) / `--permission`.
 
 ### CloudHub 2.0 Connection
 

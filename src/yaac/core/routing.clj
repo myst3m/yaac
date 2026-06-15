@@ -197,11 +197,13 @@
     ["team"]
     ["team|{*args}"]]
 
-   ;; Roles (permission sets; deprecated in favor of teams)
+   ;; Assignable permissions (Anypoint API calls these "roles")
    ["|" {:fields [:name [:role-id :fmt yc/short-uuid] :description]
-         :handler yc/get-roles}
-    ["role"]
-    ["role|{*args}"]]
+         :handler yc/get-permissions}
+    ["permission"]
+    ["permission|{*args}"]
+    ["perm"]
+    ["perm|{*args}"]]
 
    ["|" {:handler ch2/get-cloudhub20-connections}
     ["conn"]

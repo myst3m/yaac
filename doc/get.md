@@ -31,8 +31,8 @@ yaac get <resource> [org] [env] [options] [key=value...]
 | `get env` | `environment` | List environments |
 | `get ent` | `entitlement` | Organization entitlements (v-cores, IPs, VPNs) |
 | `get user` | - | List users in organization |
-| `get team` | - | List teams; `--member` / `--role` for one team's members or roles |
-| `get role` | - | List permission roles (deprecated; prefer teams) |
+| `get team` | - | List teams; `--member` / `--permission` for one team's members or permissions |
+| `get permission` | `perm` | List assignable permissions (what you grant to teams) |
 
 ```bash
 yaac get org
@@ -40,10 +40,10 @@ yaac get env T1
 yaac get ent T1
 
 # Teams (the recommended access model; roles are deprecated)
-yaac get team                  # list teams
-yaac get team admin --member   # members of the "admin" team
-yaac get team admin --role     # roles assigned to "admin"
-yaac get role timeout          # search permission roles by name
+yaac get team                    # list teams
+yaac get team admin --member     # members of the "admin" team
+yaac get team admin --permission # permissions granted to "admin"
+yaac get permission application  # search assignable permissions by name
 ```
 
 ### Applications & Deployments
