@@ -20,6 +20,7 @@ MuleSoftの公式CLI（anypoint-cli-v4）は出力が装飾されていて、sed
 - **短縮UUID** - テーブルでは先頭8文字を表示、引数でも前方マッチで使える
 - **組み込みMaven** - `yaac build`でMavenなしでビルド
 - **マニフェストで一括デプロイ** - YAMLで複数アプリをまとめて操作
+- **Teamベースのアクセス管理** - `get/create/update/delete team`（非推奨のroleに代わるAnypoint推奨モデル）
 
 ## はじめかた
 
@@ -90,6 +91,12 @@ yaac deploy manifest deploy.yaml --dry-run
 
 # デプロイ前検証（値が与えられていないプロパティを事前検出）
 yaac validate target/my-app.jar +mule.env=ch2
+
+# Teamベースのアクセス管理
+yaac get team                              # チーム一覧
+yaac get team admin --member               # チームのメンバー
+yaac create team payments parent=Developer
+yaac update team payments member=alice@example.com role="View Organization"
 ```
 
 ## グローバルオプション

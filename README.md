@@ -16,6 +16,7 @@ A fast, UNIX-friendly CLI for MuleSoft Anypoint Platform. Built with Clojure and
 - Short UUID display with prefix matching (`b68cabda` instead of full UUID)
 - Embedded Maven for `yaac build` (no Maven installation needed)
 - Manifest-based multi-app deployment
+- Team-based access management (`get/create/update/delete team`; Anypoint's recommended model over deprecated roles)
 
 ## Quick Start
 
@@ -97,6 +98,12 @@ yaac deploy app my-app target=hy:leibniz
 
 # Pre-deploy validation: catch unset properties before pushing
 yaac validate target/my-app.jar +mule.env=ch2
+
+# Team-based access management
+yaac get team                              # list teams
+yaac get team admin --member               # a team's members
+yaac create team payments parent=Developer
+yaac update team payments member=alice@example.com role="View Organization"
 ```
 
 ## Install
